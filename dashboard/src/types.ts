@@ -84,3 +84,16 @@ export interface ClaimHistory {
   customer_id: string;
   previous_claims: PreviousClaim[];
 }
+
+export interface Step {
+  id: number;
+  kind: "tool_call" | "tool_result" | "message" | "error";
+  text: string;
+  created_at: string;
+}
+
+export interface Handler {
+  handler_id: string;
+  name: string;
+  role: string;
+}

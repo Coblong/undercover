@@ -307,3 +307,108 @@ summary {
   outline: 2px solid var(--cerulean);
   outline-offset: 2px;
 }
+
+.top nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.top nav button {
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.top nav button:hover {
+  background: var(--hover);
+}
+
+.top nav button[aria-current="page"] {
+  background: var(--selected);
+}
+
+.single {
+  padding: 1rem 1.5rem 2rem;
+  max-width: 60rem;
+}
+
+.instructions pre {
+  white-space: pre-wrap;
+  font: inherit;
+  margin: 1rem 0 0;
+}
+
+.steps ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 12px;
+  background: var(--hover);
+  overflow-wrap: anywhere;
+}
+
+.steps li.problem {
+  background: var(--raspberry);
+  color: #ffffff;
+}
+
+.steps li.problem .muted {
+  color: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+select {
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font: inherit;
+  min-width: 14rem;
+}
+
+button.primary {
+  padding: 0.5rem 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sea-green);
+  color: var(--midnight);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

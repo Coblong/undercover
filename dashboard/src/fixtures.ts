@@ -102,16 +102,42 @@ export const claimRoutes = {
   "/api/customers/CUS-3001/claim-history": history,
 };
 
-/** Answer fetch calls from a table of "METHOD path" or "path" to JSON bodies. */
+/**
+ * Answer fetch calls from a table of "METHOD path" or "path" to JSON bodies.
+ * A function in the table is called each time, so an answer can change.
+ */
 export function stubApi(routes: Record<string, unknown>) {
   const fetchStub = vi.fn((path: string, init?: RequestInit) => {
     const key = init?.method ? `${init.method} ${path}` : path;
-    return Promise.resolve(
-      key in routes
-        ? new Response(JSON.stringify(routes[key]))
-        : new Response("{}", { status: 404 }),
-    );
+    if (!(key in routes)) {
+      return Promise.resolve(new Response("{}", { status: 404 }));
+    }
+    const answer = routes[key];
+    const body =
+      typeof answer === "function" ? (answer as () => unknown)() : answer;
+    return Promise.resolve(new Response(JSON.stringify(body)));
   });
   vi.stubGlobal("fetch", fetchStub);
   return fetchStub;
 }
+
+export const handlers = [
+  {
+    handler_id: "HND-01",
+    name: "Dana Whitfield",
+    role: "Senior Claims Handler",
+  },
+  { handler_id: "HND-02", name: "Marcus Oyelaran", role: "Claims Handler" },
+];
+
+export const waitingForSignOff: ClaimDetail = {
+  ...claim,
+  state: "waiting_for_sign_off",
+  decision: {
+    decision: "approve",
+    payout: 1250,
+    explanation: "Covered.",
+    policy_section: "5. Baggage and Personal Effects",
+    decided_at: "2026-10-15T10:00:00+00:00",
+  },
+};

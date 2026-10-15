@@ -133,11 +133,11 @@ Adds the rest of what the team needs to see and do.
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes with at least 80% coverage, with tests for the run button, polling that starts and stops, the sign-off form and the instructions view.
-- [ ] `npm run e2e` passes, with tests that: set up a $1,250 approval through the API and watch the claim show "waiting for sign-off"; try the payment through the API and get the block; sign off as Dana Whitfield in the dashboard and see "decided" and a $1,250.00 payment; show seeded steps in order; show the instructions page and confirm it offers no way to edit them.
-- [ ] In the browser (Playwright MCP) against the dev servers, running a stubbed claim state by hand through the API shows the steps panel updating without a reload.
-- [ ] The e2e run leaves `backend/undercover.db` untouched.
-- [ ] `npm run check` passes in full.
+- [x] `npm run check:ts` passes with at least 80% coverage, with tests for the run button, polling that starts and stops, the sign-off form and the instructions view.
+- [x] `npm run e2e` passes, with tests that: set up a $1,250 approval through the API and watch the claim show "waiting for sign-off"; try the payment through the API and get the block; sign off as Dana Whitfield in the dashboard and see "decided" and a $1,250.00 payment; show seeded steps in order; show the instructions page and confirm it offers no way to edit them.
+- [x] In the browser (Playwright MCP) against the dev servers, running a stubbed claim state by hand through the API shows the steps panel updating without a reload.
+- [x] The e2e run leaves `backend/undercover.db` untouched.
+- [x] `npm run check` passes in full.
 
 ## Phase 6: Live check and wrap-up
 

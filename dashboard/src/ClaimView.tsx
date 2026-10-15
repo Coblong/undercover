@@ -1,4 +1,5 @@
-import { useApi } from "./api";
+import { RunAgent, SignOffForm } from "./Actions";
+import { POLL_MS, useApi } from "./api";
 import { Chip } from "./Chip";
 import {
   date,
@@ -9,6 +10,7 @@ import {
   VERDICT_TONE,
   words,
 } from "./format";
+import { Steps } from "./Steps";
 import type {
   ClaimDetail,
   ClaimHistory,
@@ -135,8 +137,22 @@ function HistoryPanel({ customerId }: Readonly<{ customerId: string }>) {
   );
 }
 
-export function ClaimView({ claimId }: Readonly<{ claimId: string }>) {
-  const { data: claim, failed } = useApi<ClaimDetail>(`/api/claims/${claimId}`);
+const whileRunning = (claim: ClaimDetail) =>
+  claim.state === "in_progress" ? POLL_MS : undefined;
+
+export function ClaimView({
+  claimId,
+  onChange,
+}: Readonly<{ claimId: string; onChange: () => void }>) {
+  const {
+    data: claim,
+    failed,
+    reload,
+  } = useApi<ClaimDetail>(`/api/claims/${claimId}`, whileRunning);
+  const changed = () => {
+    reload();
+    onChange();
+  };
   if (!claim) {
     return (
       <p className="panel" role={failed ? "alert" : "status"}>
@@ -165,11 +181,22 @@ export function ClaimView({ claimId }: Readonly<{ claimId: string }>) {
         <dt>Claimed</dt>
         <dd className="mono">{money(claim.amount_claimed)}</dd>
       </dl>
+      {claim.state === "waiting" && (
+        <RunAgent claimId={claim.claim_id} onDone={changed} />
+      )}
+      <Steps claimId={claim.claim_id} active={claim.state === "in_progress"} />
       {claim.decision && (
         <DecisionPanel
           decision={claim.decision}
           payment={claim.payment}
           signOff={claim.sign_off}
+        />
+      )}
+      {claim.state === "waiting_for_sign_off" && claim.decision && (
+        <SignOffForm
+          claimId={claim.claim_id}
+          payout={claim.decision.payout}
+          onDone={changed}
         />
       )}
       <h3>Story</h3>
