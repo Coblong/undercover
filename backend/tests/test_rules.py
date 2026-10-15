@@ -34,6 +34,7 @@ def test_small_approval_is_decided_then_payable(client: TestClient):
     response = decide(client, "CLM-1001", "approve", 420)
     assert response.status_code == 200
     assert response.json()["state"] == "decided"
+    assert response.json()["message"].endswith("Now pay $420.00 with pay_claim.")
     paid = pay(client, "CLM-1001", 420)
     assert paid.status_code == 200
     assert paid.json()["message"] == "Paid $420.00."

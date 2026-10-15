@@ -11,6 +11,7 @@ from backend.models import (
     Outcome,
     PaymentRequest,
     SignOffRequest,
+    State,
     Step,
     StepRequest,
 )
@@ -21,20 +22,34 @@ def money(amount: float) -> str:
     return f"${amount:,.2f}"
 
 
+def settled_state(decision: str, payout: float) -> State:
+    """Return the state a claim rests in once it has this decision."""
+    if decision == "approve" and payout > payout_limit():
+        return "waiting_for_sign_off"
+    return "decided"
+
+
 def decide(conn: sqlite3.Connection, claim_id: str, body: DecisionRequest) -> Outcome:
-    """Record the decision on a claim that is waiting or in progress."""
+    """Record the decision on a claim that is waiting or in progress.
+
+    A claim the agent is working on stays in progress until its run ends.
+    """
     state = queries.claim_state(conn, claim_id)
     if state not in ("waiting", "in_progress"):
         raise HTTPException(
             409, f"Claim {claim_id} is already {state}, so it cannot be decided"
         )
+    if conn.execute(
+        "SELECT 1 FROM decisions WHERE claim_id = ?", (claim_id,)
+    ).fetchone():
+        raise HTTPException(409, f"Claim {claim_id} already has a decision")
     payout = round(body.payout, 2)
     if body.decision == "approve" and payout <= 0:
         raise HTTPException(422, "An approval needs a payout above zero")
     if body.decision != "approve" and payout != 0:
         raise HTTPException(422, "A decline or a referral has a payout of zero")
-    needs_sign_off = body.decision == "approve" and payout > payout_limit()
-    new_state = "waiting_for_sign_off" if needs_sign_off else "decided"
+    settled = settled_state(body.decision, payout)
+    new_state: State = "in_progress" if state == "in_progress" else settled
     with conn:
         conn.execute(
             "INSERT INTO decisions VALUES (?, ?, ?, ?, ?, ?)",
@@ -51,11 +66,13 @@ def decide(conn: sqlite3.Connection, claim_id: str, body: DecisionRequest) -> Ou
             "UPDATE claims SET state = ? WHERE claim_id = ?", (new_state, claim_id)
         )
     message = f"Decision recorded: {body.decision}."
-    if needs_sign_off:
+    if settled == "waiting_for_sign_off":
         message += (
             f" The payout is over {money(payout_limit())}, so payment waits"
             " until a handler signs off."
         )
+    elif body.decision == "approve":
+        message += f" Now pay {money(payout)} with pay_claim."
     return Outcome(claim_id=claim_id, state=new_state, message=message)
 
 
@@ -156,19 +173,26 @@ def start_run(conn: sqlite3.Connection, claim_id: str) -> Outcome:
 
 
 def finish_run(conn: sqlite3.Connection, claim_id: str, error: str | None) -> None:
-    """End a run. A claim the agent left undecided goes back to waiting."""
+    """End a run: settle a decided claim, or put an undecided one back to waiting."""
     if error is not None:
         add_step(conn, claim_id, StepRequest(kind="error", text=error))
-    if queries.claim_state(conn, claim_id) == "in_progress":
-        if error is None:
-            add_step(
-                conn,
-                claim_id,
-                StepRequest(
-                    kind="error", text="The agent finished without deciding the claim."
-                ),
-            )
-        with conn:
-            conn.execute(
-                "UPDATE claims SET state = 'waiting' WHERE claim_id = ?", (claim_id,)
-            )
+    decision = conn.execute(
+        "SELECT decision, payout FROM decisions WHERE claim_id = ?", (claim_id,)
+    ).fetchone()
+    if decision is None and error is None:
+        add_step(
+            conn,
+            claim_id,
+            StepRequest(
+                kind="error", text="The agent finished without deciding the claim."
+            ),
+        )
+    new_state = (
+        "waiting"
+        if decision is None
+        else settled_state(decision["decision"], decision["payout"])
+    )
+    with conn:
+        conn.execute(
+            "UPDATE claims SET state = ? WHERE claim_id = ?", (new_state, claim_id)
+        )

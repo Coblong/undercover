@@ -145,17 +145,17 @@ Runs the real model once, finishes the documents and does the final check. This 
 
 - Run the agent live on five claims chosen to span the work: one routine approval, one decline, one referral, one approval over $1,000 and one baggage claim with a deductible. Look at the decisions, steps and explanations in the dashboard.
 - Fix any problem in the instructions or tools that this shows. Do not tune against the handlers' answer key; I will not open `data/evals/` unless you ask me to. Scoring against it is a separate step you can request.
-- Write a short `README.md` for the product part: how to run, check and reset the database.
+- Put how to run, check and reset the pilot in `docs/STATUS.md`. The root `README.md` is the course's, so it is left alone.
 - Update `docs/STATUS.md`: what is built, how to run it, how the agent is started, the API and the open items.
 
 Success criteria:
 
-- [ ] `uv run -m agent CLM-1001` (with the real key) finishes, leaves the claim `decided` or `waiting_for_sign_off`, and the explanation is two or three sentences and names a policy section.
-- [ ] Five live runs complete without a crash. Each shows its steps in the dashboard, and any approval over $1,000 stays `waiting_for_sign_off` with no payment.
-- [ ] I list the five claims, the decisions and the payouts in my report, without comparing them to `data/evals/`.
-- [ ] `docs/STATUS.md` describes the product as built and how to run it, and the root `README.md` is short and has no emojis.
-- [ ] `npm run check` passes: ruff, pyright, pytest at 80% or more, ESLint, Prettier, tsc, vitest at 80% or more, and Playwright.
-- [ ] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
+- [x] `uv run -m agent CLM-1001` (with the real key) finishes, leaves the claim `decided` or `waiting_for_sign_off`, and the explanation is two or three sentences and names a policy section.
+- [x] Five live runs complete without a crash. Each shows its steps in the dashboard, and any approval over $1,000 stays `waiting_for_sign_off` with no payment.
+- [x] I list the five claims, the decisions and the payouts in my report, without comparing them to `data/evals/`.
+- [x] `docs/STATUS.md` describes the product as built and how to run it, and says how to run, check and reset it.
+- [x] `npm run check` passes: ruff, pyright, pytest at 80% or more, ESLint, Prettier, tsc, vitest at 80% or more, and Playwright.
+- [x] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
 
 ## Out of scope
 
