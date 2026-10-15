@@ -96,12 +96,12 @@ Replaces the hello-world agent with the UnderCover Agent: tools for the API, ins
 
 Success criteria:
 
-- [ ] `uv run pytest agent` passes, using the stub model and the backend through `TestClient`. Tests cover: a full run that approves $420 and pays it; a run that declines; a run that approves $1,250 and then tries to pay and receives the 409 text back in the tool result; steps appearing in `list_steps` in order; the instructions coming from the backend.
-- [ ] A test shows a crashing model leaves the claim `waiting` with a failure step.
-- [ ] A test shows `POST /api/claims/{id}/run` returns 202 and a second call while running returns 409.
-- [ ] No tool or code in `agent/` reads files under `data/` or `backend/`; a test asserts the agent module has no filesystem access to either.
-- [ ] `uv run -m agent --help` prints its usage.
-- [ ] `npm run check:python` passes.
+- [x] `uv run pytest agent` passes, using the stub model and the backend through `TestClient`. Tests cover: a full run that approves $420 and pays it; a run that declines; a run that approves $1,250 and then tries to pay and receives the 409 text back in the tool result; steps appearing in `list_steps` in order; the instructions coming from the backend.
+- [x] A test shows a crashing model leaves the claim `waiting` with a failure step.
+- [x] A test shows `POST /api/claims/{id}/run` returns 202 and a second call while running returns 409.
+- [x] No tool or code in `agent/` reads files under `data/` or `backend/`; a test asserts the agent module has no filesystem access to either.
+- [x] `uv run -m agent --help` prints its usage.
+- [x] `npm run check:python` passes.
 
 ## Phase 4: Dashboard, the queue and each claim
 
