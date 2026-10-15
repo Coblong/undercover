@@ -115,11 +115,11 @@ Builds the first working screens in React and TypeScript, in the brand's look.
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes with at least 80% coverage, with tests for the queue, the state counts, the claim view with and without a decision, and loading and error states.
-- [ ] In the browser (Playwright MCP) at `http://localhost:5173`: the queue lists 25 claims; the counts read 25 waiting and 0 for the rest; selecting `CLM-1001` shows its story, three items totalling $420.00, four documents and the Premium plan.
-- [ ] In the browser, a screenshot in light mode and one in dark mode show the brand's backgrounds, fonts and state colors, with readable text.
-- [ ] The page has no horizontal scroll at 1280 px and stays usable at 800 px.
-- [ ] No `any` in `dashboard/`, and `tsc` passes in strict mode.
+- [x] `npm run check:ts` passes with at least 80% coverage, with tests for the queue, the state counts, the claim view with and without a decision, and loading and error states.
+- [x] In the browser (Playwright MCP) at `http://localhost:5173`: the queue lists 25 claims; the counts read 25 waiting and 0 for the rest; selecting `CLM-1001` shows its story, three items totalling $420.00, four documents and the Premium plan.
+- [x] In the browser, a screenshot in light mode and one in dark mode show the brand's backgrounds, fonts and state colors, with readable text.
+- [x] The page has no horizontal scroll at 1280 px and stays usable at 800 px.
+- [x] No `any` in `dashboard/`, and `tsc` passes in strict mode.
 
 ## Phase 5: Dashboard, live work, sign-off and instructions
 

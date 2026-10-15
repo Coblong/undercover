@@ -90,7 +90,9 @@ def payout_limit() -> float:
 
 def connect() -> sqlite3.Connection:
     """Open a connection to the database named by UNDERCOVER_DB."""
-    conn = sqlite3.connect(os.getenv("UNDERCOVER_DB", DEFAULT_DB), timeout=10)
+    conn = sqlite3.connect(
+        os.getenv("UNDERCOVER_DB", DEFAULT_DB), timeout=10, check_same_thread=False
+    )
     conn.row_factory = sqlite3.Row
     return conn
 
