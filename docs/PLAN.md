@@ -77,12 +77,12 @@ Builds the write side and the state machine, including the rule that a payout ov
 
 Success criteria:
 
-- [ ] Tests pass for each path: approve $420 (decided, then payable), approve $1,250 (waiting for sign-off), decline and refer (decided, payment refused), a second decision (409), and an unknown claim (404).
-- [ ] The key rule has its own tests: paying $1,250 before sign-off returns 409 and creates no payment; after sign-off by `HND-01` the payment exists exactly once; paying a different amount than the approved payout returns 409; paying twice returns 409.
-- [ ] A test calls `pay_claim` on a claim that was never decided and gets a 409.
-- [ ] With the backend running, this sequence behaves as described: `decision` approve 1250 on `CLM-1001` gives `waiting_for_sign_off`; `payment` 1250 gives 409; `sign-off` by `HND-01` gives `decided` with a payment of $1,250.00.
-- [ ] `GET /api/claims` shows the right state for each claim after those calls.
-- [ ] `npm run check:python` passes with at least 80% coverage.
+- [x] Tests pass for each path: approve $420 (decided, then payable), approve $1,250 (waiting for sign-off), decline and refer (decided, payment refused), a second decision (409), and an unknown claim (404).
+- [x] The key rule has its own tests: paying $1,250 before sign-off returns 409 and creates no payment; after sign-off by `HND-01` the payment exists exactly once; paying a different amount than the approved payout returns 409; paying twice returns 409.
+- [x] A test calls `pay_claim` on a claim that was never decided and gets a 409.
+- [x] With the backend running, this sequence behaves as described: `decision` approve 1250 on `CLM-1001` gives `waiting_for_sign_off`; `payment` 1250 gives 409; `sign-off` by `HND-01` gives `decided` with a payment of $1,250.00.
+- [x] `GET /api/claims` shows the right state for each claim after those calls.
+- [x] `npm run check:python` passes with at least 80% coverage.
 
 ## Phase 3: The agent
 

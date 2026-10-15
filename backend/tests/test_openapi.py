@@ -10,6 +10,11 @@ OPERATIONS = {
     "get_instructions",
     "list_handlers",
     "list_steps",
+    "add_step",
+    "decide_claim",
+    "pay_claim",
+    "sign_off_claim",
+    "run_agent",
 }
 
 

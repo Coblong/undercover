@@ -2,21 +2,28 @@
 
 import sqlite3
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, closing
 from pathlib import Path
 from typing import Annotated
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI
 
-from backend import queries
-from backend.db import DATA, get_db, init_db
+from agent.main import run as run_claim_agent
+from backend import queries, rules
+from backend.db import DATA, connect, get_db, init_db
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
     ClaimSummary,
+    DecisionRequest,
     Handler,
+    Outcome,
+    PaymentRequest,
     Policy,
+    SignOffRequest,
     Step,
+    StepRequest,
     Text,
 )
 
@@ -87,3 +94,46 @@ def list_handlers(conn: Db) -> list[Handler]:
 def list_steps(claim_id: str, conn: Db) -> list[Step]:
     """List what the agent has done on a claim, step by step."""
     return queries.list_steps(conn, claim_id)
+
+
+@app.post("/api/claims/{claim_id}/steps", operation_id="add_step")
+def add_step(claim_id: str, body: StepRequest, conn: Db) -> Step:
+    """Record one thing the agent did on a claim."""
+    return rules.add_step(conn, claim_id, body)
+
+
+@app.post("/api/claims/{claim_id}/decision", operation_id="decide_claim")
+def decide_claim(claim_id: str, body: DecisionRequest, conn: Db) -> Outcome:
+    """Record the decision on a claim: approve, decline or refer."""
+    return rules.decide(conn, claim_id, body)
+
+
+@app.post("/api/claims/{claim_id}/payment", operation_id="pay_claim")
+def pay_claim(claim_id: str, body: PaymentRequest, conn: Db) -> Outcome:
+    """Pay an approved claim the amount given."""
+    return rules.pay(conn, claim_id, body)
+
+
+@app.post("/api/claims/{claim_id}/sign-off", operation_id="sign_off_claim")
+def sign_off_claim(claim_id: str, body: SignOffRequest, conn: Db) -> Outcome:
+    """Sign off a payout over the limit as a handler, which pays it."""
+    return rules.sign_off(conn, claim_id, body)
+
+
+def execute_run(claim_id: str) -> None:
+    """Run the agent on a claim, then tidy up if it left the claim undecided."""
+    error = None
+    try:
+        run_claim_agent(claim_id, f"{claim_id}-{uuid4().hex[:8]}")
+    except Exception as exc:  # the run is in the background, so nobody else sees this
+        error = f"The agent stopped with an error: {exc}"
+    with closing(connect()) as conn:
+        rules.finish_run(conn, claim_id, error)
+
+
+@app.post("/api/claims/{claim_id}/run", operation_id="run_agent", status_code=202)
+def run_agent(claim_id: str, conn: Db, background: BackgroundTasks) -> Outcome:
+    """Start the agent on a waiting claim."""
+    outcome = rules.start_run(conn, claim_id)
+    background.add_task(execute_run, claim_id)
+    return outcome
