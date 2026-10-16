@@ -49,7 +49,7 @@ server = [
 ]
 
 [tool.ruff]
-include = ["backend/**/*.py", "agent/**/*.py"]
+include = ["backend/**/*.py", "agent/**/*.py", "conftest.py"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "SIM", "UP", "PL", "S", "PT", "FAST", "C90", "PLR1702"]
@@ -75,7 +75,7 @@ omit = ["*/tests/*"]
 fail_under = 80
 
 [tool.pyright]
-include = ["backend", "agent"]
+include = ["backend", "agent", "conftest.py"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.12"

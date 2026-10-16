@@ -1,0 +1,414 @@
+:root {
+  --sea-green: #06d6a0;
+  --marigold: #ffc145;
+  --coral: #f78c6b;
+  --cerulean: #118ab2;
+  --raspberry: #ef476f;
+  --midnight: #073b4c;
+  --sea-mist: #cdd8db;
+
+  --page: #f0f4f5;
+  --panel: #ffffff;
+  --ink: var(--midnight);
+  --muted: color-mix(in srgb, var(--ink) 65%, transparent);
+  --hover: color-mix(in srgb, var(--ink) 7%, transparent);
+  --selected: color-mix(in srgb, var(--cerulean) 16%, transparent);
+
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #04232e;
+    --panel: #000000;
+    --ink: var(--sea-mist);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: "Instrument Sans", system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  margin: 0;
+}
+
+h2 {
+  font-size: 1.25rem;
+}
+
+h3 {
+  font-size: 1rem;
+  margin: 1.5rem 0 0.5rem;
+}
+
+p {
+  margin: 0.5rem 0;
+}
+
+.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 0.25rem;
+}
+
+.top h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.tagline {
+  font-family: "Instrument Serif", serif;
+  font-size: 1.25rem;
+  margin: 0;
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
+  gap: 1rem;
+  padding: 1rem 1.5rem 2rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.panel {
+  background: var(--panel);
+  border-radius: 16px;
+  padding: 1.25rem;
+}
+
+.chip {
+  display: inline-block;
+  padding: 0.1rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tone-marigold {
+  background: var(--marigold);
+  color: var(--midnight);
+}
+
+.tone-coral {
+  background: var(--coral);
+  color: var(--midnight);
+}
+
+.tone-seagreen {
+  background: var(--sea-green);
+  color: var(--midnight);
+}
+
+.tone-cerulean {
+  background: var(--cerulean);
+  color: #ffffff;
+}
+
+.tone-raspberry {
+  background: var(--raspberry);
+  color: #ffffff;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.counts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+
+.count {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.85rem;
+}
+
+.count .number {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 1.5rem;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.queue {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 2rem);
+}
+
+@media (max-width: 900px) {
+  .queue {
+    position: static;
+    max-height: 60vh;
+  }
+}
+
+.claims {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.claims button {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.claims button:hover {
+  background: var(--hover);
+}
+
+.claims button[aria-pressed="true"] {
+  background: var(--selected);
+}
+
+.row-top,
+.row-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.row-bottom {
+  font-size: 0.85rem;
+}
+
+.claim > header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.lead {
+  font-size: 1.1rem;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.facts dt {
+  color: var(--muted);
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.inset {
+  background: var(--hover);
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  margin: 1rem 0;
+}
+
+.inset h3 {
+  margin-top: 0;
+}
+
+.verdict {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+}
+
+th[scope="col"],
+tfoot th {
+  font-weight: 600;
+}
+
+.num {
+  text-align: right;
+}
+
+details {
+  background: var(--hover);
+  border-radius: 12px;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.4rem;
+}
+
+summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.history li {
+  margin-bottom: 0.4rem;
+}
+
+:focus-visible {
+  outline: 2px solid var(--cerulean);
+  outline-offset: 2px;
+}
+
+.top nav {
+  display: flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.top nav button {
+  padding: 0.35rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.top nav button:hover {
+  background: var(--hover);
+}
+
+.top nav button[aria-current="page"] {
+  background: var(--selected);
+}
+
+.single {
+  padding: 1rem 1.5rem 2rem;
+  max-width: 60rem;
+}
+
+.instructions pre {
+  white-space: pre-wrap;
+  font: inherit;
+  margin: 1rem 0 0;
+}
+
+.steps ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.steps li {
+  display: grid;
+  grid-template-columns: 6rem minmax(0, 1fr);
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 12px;
+  background: var(--hover);
+  overflow-wrap: anywhere;
+}
+
+.steps li.problem {
+  background: var(--raspberry);
+  color: #ffffff;
+}
+
+.steps li.problem .muted {
+  color: inherit;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  margin: 1rem 0;
+}
+
+.actions label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+select {
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font: inherit;
+  min-width: 14rem;
+}
+
+button.primary {
+  padding: 0.5rem 1.1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sea-green);
+  color: var(--midnight);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
