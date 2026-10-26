@@ -8,6 +8,7 @@ import {
   STATE_TONE,
   VERDICT_LABEL,
   VERDICT_TONE,
+  uniqueKeys,
   words,
 } from "./format";
 import { Steps } from "./Steps";
@@ -59,6 +60,7 @@ function DecisionPanel(
 }
 
 function ItemsTable({ items }: Readonly<{ items: Item[] }>) {
+  const keys = uniqueKeys(items.map((item) => item.description));
   const total = items.reduce((sum, item) => sum + item.amount, 0);
   return (
     <table>
@@ -72,8 +74,8 @@ function ItemsTable({ items }: Readonly<{ items: Item[] }>) {
         </tr>
       </thead>
       <tbody>
-        {items.map((item) => (
-          <tr key={item.description}>
+        {items.map((item, position) => (
+          <tr key={keys[position]}>
             <td>{item.description}</td>
             <td>{words(item.category)}</td>
             <td className="num mono">{money(item.amount)}</td>
@@ -160,6 +162,7 @@ export function ClaimView({
       </p>
     );
   }
+  const documentKeys = uniqueKeys(claim.documents.map((d) => d.name));
   return (
     <article className="panel claim" aria-label={`Claim ${claim.claim_id}`}>
       <header>
@@ -210,8 +213,8 @@ export function ClaimView({
       <h3>Items claimed</h3>
       <ItemsTable items={claim.items} />
       <h3>Documents</h3>
-      {claim.documents.map((document) => (
-        <details key={document.name}>
+      {claim.documents.map((document, position) => (
+        <details key={documentKeys[position]}>
           <summary>
             {document.name}{" "}
             <span className="muted">{words(document.type)}</span>

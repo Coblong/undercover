@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { date, money, words } from "./format";
+import { date, money, uniqueKeys, words } from "./format";
 
 it("formats money in US dollars", () => {
   expect(money(1250)).toBe("$1,250.00");
@@ -14,4 +14,14 @@ it("formats dates and times as dates", () => {
 it("turns identifiers into words", () => {
   expect(words("trip_delay")).toBe("Trip delay");
   expect(words("premium")).toBe("Premium");
+});
+
+it("keeps keys unique when a text repeats", () => {
+  expect(uniqueKeys(["a", "b", "a", "a"])).toEqual([
+    "a",
+    "b",
+    "a (2)",
+    "a (3)",
+  ]);
+  expect(uniqueKeys([])).toEqual([]);
 });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { postJson, useApi } from "./api";
+import { postJson, reasonOf, useApi } from "./api";
 import { money } from "./format";
 import type { Handler } from "./types";
 
@@ -8,15 +8,15 @@ export function RunAgent({
   onDone,
 }: Readonly<{ claimId: string; onDone: () => void }>) {
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const run = () => {
     setBusy(true);
-    setFailed(false);
+    setFailure(null);
     postJson(`/api/claims/${claimId}/run`)
       .then(onDone)
-      .catch(() => {
-        setFailed(true);
+      .catch((error: unknown) => {
+        setFailure(reasonOf(error));
       })
       .finally(() => {
         setBusy(false);
@@ -28,7 +28,7 @@ export function RunAgent({
       <button type="button" className="primary" disabled={busy} onClick={run}>
         Run agent
       </button>
-      {failed && <p role="alert">Could not start the agent.</p>}
+      {failure && <p role="alert">Could not start the agent: {failure}</p>}
     </div>
   );
 }
@@ -41,15 +41,15 @@ export function SignOffForm({
   const { data: handlers } = useApi<Handler[]>("/api/handlers");
   const [handlerId, setHandlerId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
 
   const signOff = () => {
     setBusy(true);
-    setFailed(false);
+    setFailure(null);
     postJson(`/api/claims/${claimId}/sign-off`, { handler_id: handlerId })
       .then(onDone)
-      .catch(() => {
-        setFailed(true);
+      .catch((error: unknown) => {
+        setFailure(reasonOf(error));
         setBusy(false);
       });
   };
@@ -87,7 +87,7 @@ export function SignOffForm({
       >
         Sign off and pay {money(payout)}
       </button>
-      {failed && <p role="alert">Could not sign off this claim.</p>}
+      {failure && <p role="alert">Could not sign off this claim: {failure}</p>}
     </form>
   );
 }

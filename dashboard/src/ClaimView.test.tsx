@@ -159,3 +159,18 @@ it("says a claim left for a handler needs one, and offers no run", async () => {
   expect(screen.getByText("Left for a handler")).toBeDefined();
   expect(screen.queryByRole("button", { name: "Run agent" })).toBeNull();
 });
+
+it("shows items and documents that share a name without a key warning", async () => {
+  const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const twice = {
+    ...claim,
+    items: [claim.items[0], claim.items[0]],
+    documents: [claim.documents[0], claim.documents[0]],
+  };
+  stubApi({ "/api/claims/CLM-1001": twice, ...claimRoutes });
+  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  expect(await screen.findAllByText("Airport hotel")).toHaveLength(2);
+  expect(screen.getAllByText(/Hotel receipt/)).toHaveLength(2);
+  expect(warn).not.toHaveBeenCalled();
+  warn.mockRestore();
+});

@@ -87,3 +87,13 @@ export function words(snake: string): string {
   const text = snake.replaceAll("_", " ");
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
+
+/** A key for each text that stays unique when a text repeats: "a", "a (2)". */
+export function uniqueKeys(texts: string[]): string[] {
+  const seen = new Map<string, number>();
+  return texts.map((text) => {
+    const count = (seen.get(text) ?? 0) + 1;
+    seen.set(text, count);
+    return count === 1 ? text : `${text} (${String(count)})`;
+  });
+}

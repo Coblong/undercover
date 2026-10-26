@@ -86,20 +86,20 @@ Findings G1 to G4, H1, H2.
 - Errors show the backend's reason. A refused sign-off or run says why, in the API's own words.
 - Polling pauses while the tab is hidden and resumes when it returns.
 - List keys use ids, not text (the to-do list, the items table).
-- The dashboard's types are generated from the backend's `openapi.json` with `openapi-typescript`, a new development dependency, so a change to a model fails the check until the types are regenerated. `uv run -m backend.openapi` writes the document and `npm run types` writes the types.
+- The dashboard's types are generated from the backend's `openapi.json` by `scripts/types.mjs` (a short generator of our own, since `openapi-typescript` needs overrides for our TypeScript version and its output breaks the project's lint rules), so a change to a model fails the check until the types are regenerated. `npm run types` writes the types, from the document `uv run -m backend.openapi` makes, and `npm run check:python` fails when they are out of date.
 - A test that runs the agent against a backend that returns errors and timeouts partway through a claim (an `httpx.MockTransport`), and checks the claim ends `waiting` or left for a handler, never stuck.
 
 Success criteria:
 
-- [ ] Vitest tests show a 409 reason reaches the screen for sign-off and for starting a run, polling stops while the document is hidden and starts again, and a repeated to-do text and a repeated item description render with no key warning.
-- [ ] Changing a field in `backend/models.py` without regenerating makes `npm run check` fail, and regenerating makes it pass.
-- [ ] A test with a backend that fails on every call after the third leaves the claim `waiting` first and left for a handler after a second try, with no claim `in_progress`.
-- [ ] In the browser (Playwright MCP), a refused sign-off shows its reason, in light and dark mode.
-- [ ] `npm run check` passes in full, with at least 80% coverage on both sides.
-- [ ] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
+- [x] Vitest tests show a 409 reason reaches the screen for sign-off and for starting a run, polling stops while the document is hidden and starts again, and a repeated to-do text and a repeated item description render with no key warning.
+- [x] Changing a field in `backend/models.py` without regenerating makes `npm run check` fail, and regenerating makes it pass.
+- [x] A test with a backend that fails on every call after the third leaves the claim `waiting` first and left for a handler after a second try, with no claim `in_progress`.
+- [x] In the browser (Playwright MCP), a refused sign-off shows its reason, in light and dark mode.
+- [x] `npm run check` passes in full, with at least 80% coverage on both sides.
+- [x] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
 
 ## Questions for you
 
-- Generated TypeScript types (Phase 4) add one development dependency, `openapi-typescript`, and a small build step. Worth it, or keep the types by hand?
+- Generated TypeScript types (Phase 4): done with a 70-line generator of our own in place of `openapi-typescript` (see Phase 4). Fine?
 - Do you want the optional end-to-end test where Playwright drives the real agent against a stub model server? It teaches the most and is the largest piece, so I left it out. It would add a configurable model address and a small server in `e2e/`.
 - Phase 3 is a refactor with no new behavior. If you would rather keep adding features first, Phases 1 and 2 are the ones to do before the Week 2 builds; Phases 3 and 4 can wait.

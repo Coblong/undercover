@@ -77,6 +77,9 @@ export const decidedClaim: ClaimDetail = {
 
 export const policy: Policy = {
   policy_id: "POL-2001",
+  customer_id: "CUS-3001",
+  sold_through: "direct",
+  status: "active",
   plan: "premium",
   add_ons: [],
   purchased_on: "2026-04-22",
@@ -95,6 +98,7 @@ export const history: ClaimHistory = {
     {
       claim_id: "CLM-0412",
       filed_on: "2024-08-19",
+      incident_date: "2024-08-09",
       claim_type: "baggage_delay",
       summary: "Checked bag arrived 30 hours late in Lisbon",
       outcome: "approved",
@@ -108,6 +112,14 @@ export const claimRoutes = {
   "/api/claims/CLM-1001/claim-history": history,
 };
 
+/** An answer the backend refuses with, as a status and a body. */
+export class Refusal {
+  constructor(
+    readonly status: number,
+    readonly body: unknown,
+  ) {}
+}
+
 /**
  * Answer fetch calls from a table of "METHOD path" or "path" to JSON bodies.
  * A function in the table is called each time, so an answer can change.
@@ -119,6 +131,11 @@ export function stubApi(routes: Record<string, unknown>) {
       return Promise.resolve(new Response("{}", { status: 404 }));
     }
     const answer = routes[key];
+    if (answer instanceof Refusal) {
+      return Promise.resolve(
+        new Response(JSON.stringify(answer.body), { status: answer.status }),
+      );
+    }
     const body =
       typeof answer === "function" ? (answer as () => unknown)() : answer;
     return Promise.resolve(new Response(JSON.stringify(body)));

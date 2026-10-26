@@ -249,3 +249,44 @@ def test_a_claim_that_loops_is_stopped_and_goes_back_to_waiting(
     assert claim(client)["state"] == "waiting"
     assert steps(client)[-1]["kind"] == "error"
     assert len([s for s in steps(client) if s["kind"] == "tool_call"]) == 3
+
+
+def test_a_backend_that_fails_partway_never_leaves_a_claim_stuck(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, agents: Agents
+):
+    """After its third call in an attempt, the backend answers every call with a 500."""
+    real = main.call
+    made = {"calls": 0}
+
+    def failing(method: str, path: str, *args: Any, **kwargs: Any) -> str:
+        made["calls"] += 1
+        if made["calls"] > 3:
+            return "Error 500: Internal Server Error"
+        return real(method, path, *args, **kwargs)
+
+    def attempt(claim_id: str, thread_id: str) -> str:
+        made["calls"] = 0
+        return main.run(
+            claim_id,
+            thread_id,
+            stub(
+                calls(("get_claim", {})),
+                calls(decision("approve", 420)),
+                calls(("pay_claim", {"amount": 420})),
+                AIMessage(content="Done."),
+            ),
+        )
+
+    monkeypatch.setattr(main, "call", failing)
+    agents.claim(attempt)
+
+    assert client.post("/api/claims/CLM-1001/run").status_code == 202
+    assert claim(client)["state"] == "waiting"
+    assert client.post("/api/claims/CLM-1001/run").status_code == 202
+    assert claim(client)["state"] == "left_for_handler"
+
+    states = {c["state"] for c in client.get("/api/claims").json()}
+    assert "in_progress" not in states
+    texts = [s["text"] for s in steps(client) if s["kind"] == "error"]
+    assert texts[0] == "The agent finished without deciding the claim."
+    assert texts[-1] == "The claim failed twice, so it is left for a handler."

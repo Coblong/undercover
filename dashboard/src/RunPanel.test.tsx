@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
-import { finishedRun, runningRun, stubApi } from "./fixtures";
+import { finishedRun, Refusal, runningRun, stubApi } from "./fixtures";
 import { RunPanel } from "./RunPanel";
 
 afterEach(() => {
@@ -91,8 +91,37 @@ it("says so when the run cannot be started", async () => {
   render(<RunPanel waiting={25} />);
   await userEvent.click(screen.getByRole("button", { name: "Run the queue" }));
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "Could not start the run.",
+    "Could not start the run: The request failed (404)",
   );
+});
+
+it("gives the backend's reason when the run cannot be started", async () => {
+  stubApi({
+    "/api/runs/latest": null,
+    "POST /api/runs": new Refusal(409, { detail: "A run is already going" }),
+  });
+  render(<RunPanel waiting={25} />);
+  await userEvent.click(screen.getByRole("button", { name: "Run the queue" }));
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "Could not start the run: A run is already going",
+  );
+});
+
+it("shows two to-do items with the same text without a key warning", async () => {
+  const warn = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  const twice = {
+    ...runningRun,
+    todos: [
+      { text: "CLM-1001 delay", status: "done" as const },
+      { text: "CLM-1001 delay", status: "to_do" as const },
+    ],
+  };
+  stubApi({ "/api/runs/latest": twice });
+  render(<RunPanel waiting={20} />);
+  const list = await screen.findByRole("list", { name: "To-do list" });
+  expect(within(list).getAllByRole("listitem")).toHaveLength(2);
+  expect(warn).not.toHaveBeenCalled();
+  warn.mockRestore();
 });
 
 it("does not offer a run while one is going, with nothing waiting or with no number", async () => {

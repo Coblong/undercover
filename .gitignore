@@ -26,6 +26,7 @@ htmlcov/
 *.ipynb_checkpoints
 
 # Node and the Vite dashboard
+dashboard/openapi.json
 node_modules/
 .vite/
 *.tsbuildinfo

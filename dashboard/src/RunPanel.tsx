@@ -1,7 +1,13 @@
 import { useState } from "react";
-import { POLL_MS, postJson, useApi } from "./api";
+import { POLL_MS, postJson, reasonOf, useApi } from "./api";
 import { Chip } from "./Chip";
-import { RUN_LABEL, RUN_TONE, TODO_LABEL, TODO_TONE } from "./format";
+import {
+  RUN_LABEL,
+  RUN_TONE,
+  TODO_LABEL,
+  TODO_TONE,
+  uniqueKeys,
+} from "./format";
 import type { Run } from "./types";
 
 const whileRunning = (run: Run | null) =>
@@ -13,7 +19,7 @@ function RunForm({
   onStarted,
 }: Readonly<{ waiting: number; running: boolean; onStarted: () => void }>) {
   const [typed, setTyped] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
   const limit = typed ?? String(waiting);
   const valid = Number.isInteger(Number(limit)) && Number(limit) >= 1;
 
@@ -23,11 +29,11 @@ function RunForm({
       aria-label="Run the queue"
       onSubmit={(event) => {
         event.preventDefault();
-        setFailed(false);
+        setFailure(null);
         postJson("/api/runs", { limit: Number(limit) })
           .then(onStarted)
-          .catch(() => {
-            setFailed(true);
+          .catch((error: unknown) => {
+            setFailure(reasonOf(error));
           });
       }}
     >
@@ -49,12 +55,13 @@ function RunForm({
       >
         Run the queue
       </button>
-      {failed && <p role="alert">Could not start the run.</p>}
+      {failure && <p role="alert">Could not start the run: {failure}</p>}
     </form>
   );
 }
 
 function Plan({ run }: Readonly<{ run: Run }>) {
+  const keys = uniqueKeys(run.todos.map((todo) => todo.text));
   return (
     <>
       <p className="verdict">
@@ -65,8 +72,8 @@ function Plan({ run }: Readonly<{ run: Run }>) {
       </p>
       {run.todos.length ? (
         <ol className="todos" aria-label="To-do list">
-          {run.todos.map((todo) => (
-            <li key={todo.text}>
+          {run.todos.map((todo, position) => (
+            <li key={keys[position]}>
               <Chip
                 tone={TODO_TONE[todo.status]}
                 label={TODO_LABEL[todo.status]}
