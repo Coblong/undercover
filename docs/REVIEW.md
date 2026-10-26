@@ -1,6 +1,6 @@
-# Code review: from pilot to production
+# Code review: the pilot and the harness build
 
-A review of everything built so far: the pilot and the harness build. The plan that follows from it is `docs/PLAN_PRODUCTION.md`.
+A review of everything built so far: the pilot and the harness build. UnderCover is an educational project, so the question is whether the code is well written and follows best practices as it grows, not whether it is ready to launch. The first version of this review judged it against a production launch. Most findings stand as code quality findings, and the triage below says which are worth fixing in a course project. The plan that follows is `docs/PLAN_QUALITY.md`.
 
 ## Scope and method
 
@@ -10,7 +10,25 @@ A review of everything built so far: the pilot and the harness build. The plan t
 
 ## Verdict
 
-The pilot is a good pilot. The rules that matter most live in the backend, not the prompt. The state machine is mostly sound, the checks are strict and green, and tests never call a model. But it is not yet something to put real claims through. Money handling and input validation are loose, there is no authentication, the agent is not confined to its own claim, and nothing is logged. The data layer cannot be migrated. The agent's work runs inside the web server, so a restart loses it. And the customer history that the repeat-claim rule depends on is a frozen copy of the seed file.
+The code is clean and well tested for its size. The rules that matter most live in the backend, not the prompt. The state machine is mostly sound, the checks are strict and green, and tests never call a model. The weaknesses are the ones that appear when a pilot grows:
+
+- The backend trusts its inputs (payouts, texts) and does read-then-write without a transaction.
+- The claim agent can name any claim or customer in its tool calls.
+- Configuration is read in scattered places, and `.env` overrides the real environment.
+- The HTTP layer in `backend/main.py` also runs the agents, and `rules.py` has become a catch-all.
+- Nothing is logged.
+- The customer history behind the repeat-claim rule is a frozen copy of the seed file.
+
+None of these is hard to fix, and each is cheaper to fix before more features land on top.
+
+## Triage for an educational project
+
+| Verdict | Findings | Why |
+|---|---|---|
+| **Fix now** (correctness and good practice) | A1, A4, A5, A6, B2, B5, C1, C3, C5, D6, E1 (minimal), F3, G3, G4, I (the smells) | They are bugs or habits that later builds will copy. Each is small. |
+| **Fix if it is cheap** | G1, G2, H1, H2 | Good practice, with a dependency or some effort. |
+| **Leave to a later brief** | A3, A7 (part), A8, B1, C2, C4, C6, C7, C8, D1, D4, E2 | The briefs for Weeks 2 and 3 build them. Doing them now means doing them twice. |
+| **Skip: production concerns only** | A2 (money as cents), B3, B4, B6, E3, F1, F2, F5, H3, H4, H5 | Not worth the churn in a course project. Money as `float` matches the course's own payout code. Reseeding by deleting the database is the course's workflow. |
 
 **What to keep:**
 
@@ -24,7 +42,7 @@ The pilot is a good pilot. The rules that matter most live in the backend, not t
 
 ## Findings
 
-**Severity:** Critical means real money or real customer data is at risk. High means a defect or gap that would hurt in production. Medium is a weakness to fix on the way. Low is a smell.
+**Severity** below is as the first version judged it, against a production launch. The triage above is the one to follow for this project.
 
 **"Scheduled"** means a later brief in `labs/` already covers the finding, so building it now would be building ahead, or building twice. "Not scheduled" means I found nothing in the briefs that covers it. The briefs I skimmed were DURABLE, SWARM, IMPROVE, SECURE, CONTEXT, RUNTIME and COPILOT.
 
@@ -141,4 +159,4 @@ All run against a throwaway database, with the real backend code.
 
 The later briefs will change the shape of the system a lot: Postgres and SQLAlchemy (DURABLE), a LangGraph claim agent in its own service (DURABLE), a code dispatcher in place of the queue agent (SWARM), sign-in (IMPROVE), an API key for the agent and a Lambda build (SECURE). Findings C2, C4, C6, C7, C8 and B1 will be overtaken by them. Putting effort into the SQLite concurrency settings, the in-process background tasks or the queue agent's loop would be wasted.
 
-What those briefs do not mention is the subject of the plan. Money and decision integrity, confining the agent to its claim, the customer history, a real schema with migrations, logging and an audit trail, a contract for the dashboard, and CI. Almost all of it is cheap to do now and expensive to retrofit after the move to Postgres, so the plan does it first.
+What those briefs do not mention is the subject of the plan: validating decisions, making writes atomic, confining the agent to its claim, the customer history, configuration, logging, and a cleaner structure for the code that the briefs will build on.
