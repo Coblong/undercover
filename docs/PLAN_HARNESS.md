@@ -60,14 +60,14 @@ Gives the claim agent the manual and section-by-section lookup, the new default 
 
 Success criteria:
 
-- [ ] `uv run pytest backend agent` passes, with tests for: the section list of each document (12 wording sections, 14 manual sections), one section's text, a 404 for an unknown document or section, `get_instructions` for both agents.
-- [ ] The seed test is updated: the backend reads `claims_manual.md` and still never opens `data/evals/`, `data/security/` or `knowledge.json`.
-- [ ] A claim-agent test on a stub model reads two sections and `list_document_sections`, and the claim's steps include two `read` steps naming the sections, in order.
-- [ ] A test shows a tool that raises comes back to the stub model as text, and a model that keeps calling tools is stopped by the call limit and leaves the claim `waiting`.
-- [ ] A test shows the default model is `deepseek/deepseek-v4.1-flash` with low reasoning, and `MODEL_NAME` overrides it.
-- [ ] `GET /openapi.json` check passes: every operation has an `operation_id`, a docstring and no optional input.
-- [ ] No tool or code in `agent/` reads files under `data/` or `backend/`, as the pilot's test asserts.
-- [ ] `npm run check:python` passes.
+- [x] `uv run pytest backend agent` passes, with tests for: the section list of each document (12 wording sections, 14 manual sections), one section's text, a 404 for an unknown section and a 422 for an unknown document, `get_instructions` for both agents.
+- [x] The seed test is updated: the backend reads `claims_manual.md` and still never opens `data/evals/`, `data/security/` or `knowledge.json`.
+- [x] A claim-agent test on a stub model reads two sections and `list_document_sections`, and the claim's steps include two `read` steps naming the sections, in order.
+- [x] A test shows a tool that raises comes back to the stub model as text, and a model that keeps calling tools is stopped by the call limit and leaves the claim `waiting`.
+- [x] A test shows the default model is `deepseek/deepseek-v4.1-flash` with low reasoning, and `MODEL_NAME` overrides it.
+- [x] `GET /openapi.json` check passes: every operation has an `operation_id`, a docstring and no optional input.
+- [x] No tool or code in `agent/` reads files under `data/` or `backend/`, as the pilot's test asserts.
+- [x] `npm run check:python` passes.
 
 ## Phase 2: Attempts, retries and recovery
 

@@ -36,14 +36,37 @@ def test_claim_history_has_no_contact_details(client: TestClient):
         assert private not in text
 
 
-def test_policy_wording(client: TestClient):
-    text = client.get("/api/policy-wording").json()["text"]
-    assert text.startswith("# UnderCover Travel Insurance: Policy Wording")
-    assert "## 10. How we work out your payment" in text
+def test_sections_of_each_document(client: TestClient):
+    wording = client.get("/api/documents/wording/sections").json()
+    manual = client.get("/api/documents/manual/sections").json()
+    assert len(wording) == 12
+    assert wording[9] == {"number": 10, "title": "How we work out your payment"}
+    assert len(manual) == 14
+    assert manual[8] == {"number": 9, "title": "Repeat claims"}
 
 
-def test_instructions(client: TestClient):
-    assert client.get("/api/instructions").json()["text"]
+def test_one_section(client: TestClient):
+    section = client.get("/api/documents/manual/sections/9").json()
+    assert section["document"] == "manual"
+    assert section["title"] == "Repeat claims"
+    assert section["text"].startswith("## 9. Repeat claims")
+    assert "third claim within any 12 month period" in section["text"]
+    assert "## 10." not in section["text"]
+    last = client.get("/api/documents/wording/sections/12").json()
+    assert last["text"].startswith("## 12. Definitions")
+
+
+def test_unknown_sections_and_documents(client: TestClient):
+    assert client.get("/api/documents/wording/sections/13").status_code == 404
+    assert client.get("/api/documents/handbook/sections").status_code == 422
+
+
+def test_instructions_for_both_agents(client: TestClient):
+    claim = client.get("/api/instructions/claim").json()["text"]
+    queue = client.get("/api/instructions/queue").json()["text"]
+    assert "get_document_section" in claim
+    assert "work_claim" in queue
+    assert client.get("/api/instructions/other").status_code == 422
 
 
 def test_list_handlers(client: TestClient):

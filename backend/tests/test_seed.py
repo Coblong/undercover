@@ -13,7 +13,9 @@ ALLOWED_FILES = {
     "handlers.json",
     "company.json",
     "policy_wording.md",
-    "instructions.md",
+    "claims_manual.md",
+    "instructions_claim.md",
+    "instructions_queue.md",
 }
 
 
@@ -55,9 +57,11 @@ def test_only_allowed_files_are_read(tmp_path: Path, monkeypatch: pytest.MonkeyP
     with TestClient(app) as client:
         for path in (
             "/api/claims/CLM-1001",
-            "/api/policy-wording",
-            "/api/instructions",
+            "/api/documents/wording/sections/3",
+            "/api/documents/manual/sections/3",
+            "/api/instructions/claim",
+            "/api/instructions/queue",
         ):
             client.get(path)
-    assert {"claims.json", "policy_wording.md"} <= read
+    assert {"claims.json", "policy_wording.md", "claims_manual.md"} <= read
     assert read <= ALLOWED_FILES

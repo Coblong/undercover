@@ -8,11 +8,19 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it("shows the instructions and offers no way to change them", async () => {
-  stubApi({ "/api/instructions": { text: "You are the UnderCover Agent." } });
+it("shows both sets of instructions and offers no way to change them", async () => {
+  stubApi({
+    "/api/instructions/queue": { text: "Plan the queue." },
+    "/api/instructions/claim": { text: "Decide from the wording." },
+  });
   render(<Instructions />);
+  expect(await screen.findByText("Plan the queue.")).toBeDefined();
+  expect(await screen.findByText("Decide from the wording.")).toBeDefined();
   expect(
-    await screen.findByText("You are the UnderCover Agent."),
+    screen.getByRole("heading", { name: "Running the queue" }),
+  ).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Working a claim" }),
   ).toBeDefined();
   expect(screen.queryByRole("textbox")).toBeNull();
   expect(screen.queryByRole("button")).toBeNull();
@@ -21,8 +29,8 @@ it("shows the instructions and offers no way to change them", async () => {
 it("says so when the instructions cannot be loaded", async () => {
   stubApi({});
   render(<Instructions />);
-  expect(screen.getByRole("status").textContent).toBe("Loading...");
-  expect((await screen.findByRole("alert")).textContent).toBe(
+  expect(screen.getAllByRole("status")[0].textContent).toBe("Loading...");
+  expect((await screen.findAllByRole("alert"))[0].textContent).toBe(
     "Could not load the instructions.",
   );
 });

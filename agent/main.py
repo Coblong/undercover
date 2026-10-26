@@ -7,6 +7,12 @@ from typing import Any, Literal
 import httpx
 from dotenv import load_dotenv
 from langchain.agents import create_agent
+from langchain.agents.middleware import (
+    AgentMiddleware,
+    ModelCallLimitMiddleware,
+    ModelRetryMiddleware,
+    ToolRetryMiddleware,
+)
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.tools import tool
@@ -17,8 +23,11 @@ load_dotenv(override=True)
 
 BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "openai/gpt-6-luna"
+DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
 STEP_LIMIT = 600
+CALL_LIMIT = 40
+RETRY_DELAY = 1.0
+DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
 
 
 def backend() -> httpx.Client:
@@ -54,9 +63,15 @@ def get_claim_history(customer_id: str) -> str:
 
 
 @tool
-def get_policy_wording() -> str:
-    """Get the policy wording, the contract that decides every claim."""
-    return call("GET", "/api/policy-wording")
+def list_document_sections(document: Literal["wording", "manual"]) -> str:
+    """List the numbered sections of the policy wording or the claims manual."""
+    return call("GET", f"/api/documents/{document}/sections")
+
+
+@tool
+def get_document_section(document: Literal["wording", "manual"], number: int) -> str:
+    """Read one numbered section of the policy wording or the claims manual."""
+    return call("GET", f"/api/documents/{document}/sections/{number}")
 
 
 @tool
@@ -87,14 +102,15 @@ TOOLS = [
     get_claim,
     get_policy,
     get_claim_history,
-    get_policy_wording,
+    list_document_sections,
+    get_document_section,
     decide_claim,
     pay_claim,
 ]
 
 
 def model() -> ChatOpenAI:
-    """Return the model named in MODEL_NAME, or GPT-6 Luna by default."""
+    """Return the model named in MODEL_NAME, or DeepSeek V4.1 Flash by default."""
     name = os.getenv("MODEL_NAME")
     return ChatOpenAI(
         model=name or DEFAULT_MODEL,
@@ -106,13 +122,20 @@ def model() -> ChatOpenAI:
 
 def steps_of(message: BaseMessage) -> list[tuple[str, str]]:
     """Turn one message into the steps (kind, text) the team sees."""
+    steps: list[tuple[str, str]]
     if isinstance(message, ToolMessage):
-        return [("tool_result", str(message.text))]
+        steps = [("tool_result", str(message.text))]
+        if message.name == "get_document_section" and not message.text.startswith(
+            "Error"
+        ):
+            section = json.loads(message.text)
+            label = DOCUMENT_LABEL[section["document"]]
+            read = f"{label}, {section['number']}. {section['title']}"
+            steps.insert(0, ("read", read))
+        return steps
     if not isinstance(message, AIMessage):
         return []
-    steps: list[tuple[str, str]] = (
-        [("message", str(message.text))] if message.text else []
-    )
+    steps = [("message", str(message.text))] if message.text else []
     for call_ in message.tool_calls:
         args = ", ".join(f"{k}={json.dumps(v)}" for k, v in call_["args"].items())
         steps.append(("tool_call", f"{call_['name']}({args})"))
@@ -121,8 +144,20 @@ def steps_of(message: BaseMessage) -> list[tuple[str, str]]:
 
 def run(claim_id: str, thread_id: str, llm: BaseChatModel | None = None) -> str:
     """Run the agent on one claim, reporting each step, and return its final reply."""
-    instructions = json.loads(call("GET", "/api/instructions"))["text"]
-    agent = create_agent(llm or model(), tools=TOOLS, system_prompt=instructions)
+    instructions = json.loads(call("GET", "/api/instructions/claim"))["text"]
+    middleware: list[AgentMiddleware[Any, Any, Any]] = [
+        ModelRetryMiddleware(
+            initial_delay=RETRY_DELAY, jitter=False, on_failure="error"
+        ),
+        ToolRetryMiddleware(initial_delay=RETRY_DELAY, jitter=False),
+        ModelCallLimitMiddleware(run_limit=CALL_LIMIT),
+    ]
+    agent = create_agent(
+        llm or model(),
+        tools=TOOLS,
+        system_prompt=instructions,
+        middleware=middleware,
+    )
     reply = ""
     for update in agent.stream(
         {"messages": [{"role": "user", "content": f"Decide claim {claim_id}."}]},
@@ -130,7 +165,7 @@ def run(claim_id: str, thread_id: str, llm: BaseChatModel | None = None) -> str:
         stream_mode="updates",
     ):
         for node in update.values():
-            for message in node["messages"]:
+            for message in (node or {}).get("messages", []):
                 for kind, text in steps_of(message):
                     clipped = (
                         text if len(text) <= STEP_LIMIT else text[:STEP_LIMIT] + "..."

@@ -105,9 +105,19 @@ class Text(BaseModel):
     text: str
 
 
+class SectionRef(BaseModel):
+    number: int
+    title: str
+
+
+class Section(SectionRef):
+    document: Literal["wording", "manual"]
+    text: str
+
+
 class Step(BaseModel):
     id: int
-    kind: Literal["tool_call", "tool_result", "message", "error"]
+    kind: Literal["tool_call", "tool_result", "message", "read", "error"]
     text: str
     created_at: str
 
@@ -134,5 +144,5 @@ class SignOffRequest(BaseModel):
 
 
 class StepRequest(BaseModel):
-    kind: Literal["tool_call", "tool_result", "message", "error"]
+    kind: Literal["tool_call", "tool_result", "message", "read", "error"]
     text: str

@@ -5,6 +5,7 @@ const LABEL: Record<Step["kind"], string> = {
   tool_call: "Called",
   tool_result: "Got back",
   message: "Said",
+  read: "Read",
   error: "Problem",
 };
 

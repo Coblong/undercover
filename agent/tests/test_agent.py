@@ -1,14 +1,17 @@
 import ast
+import itertools
 import json
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from agent import main
+from backend import main as backend_main
 from backend.main import app
 
 
@@ -63,7 +66,10 @@ def test_read_tools():
     history = main.get_claim_history.invoke({"customer_id": "CUS-3001"})
     assert "CLM-0412" in history
     assert "email" not in history
-    assert "Policy Wording" in main.get_policy_wording.invoke({})
+    sections = main.list_document_sections.invoke({"document": "manual"})
+    assert "Repeat claims" in sections
+    section = main.get_document_section.invoke({"document": "wording", "number": 3})
+    assert "Trip Delay" in section
 
 
 def test_tools_return_the_reason_when_the_backend_refuses():
@@ -140,16 +146,19 @@ def test_instructions_come_from_the_backend(
 
     monkeypatch.setattr(main, "create_agent", spy)
     main.run("CLM-1001", "thread-4", stub(AIMessage(content="Nothing to do.")))
-    assert seen["system_prompt"] == client.get("/api/instructions").json()["text"]
+    assert seen["system_prompt"] == client.get("/api/instructions/claim").json()["text"]
 
 
 def test_long_results_are_clipped_in_the_steps(client: TestClient):
     main.run(
         "CLM-1001",
         "thread-5",
-        stub(calls(("get_policy_wording", {})), AIMessage(content="Read it.")),
+        stub(
+            calls(("get_document_section", {"document": "manual", "number": 7})),
+            AIMessage(content="Read it."),
+        ),
     )
-    result = steps(client)[1]["text"]
+    result = steps(client)[2]["text"]
     assert len(result) == main.STEP_LIMIT + 3
     assert result.endswith("...")
 
@@ -157,7 +166,7 @@ def test_long_results_are_clipped_in_the_steps(client: TestClient):
 def test_model_name(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
     monkeypatch.delenv("MODEL_NAME", raising=False)
-    assert main.model().model_name == "openai/gpt-6-luna"
+    assert main.model().model_name == "deepseek/deepseek-v4.1-flash"
     monkeypatch.setenv("MODEL_NAME", "openrouter/free")
     assert main.model().model_name == "openrouter/free"
 
@@ -174,3 +183,64 @@ def test_agent_reaches_data_only_through_the_api():
         for forbidden in ("open(", "read_text", "data/", "sqlite3", "json.load("):
             assert forbidden not in source, (path, forbidden)
     assert json.loads(main.call("GET", "/api/health")) == {"status": "ok"}
+
+
+def test_sections_read_are_recorded_in_order(client: TestClient):
+    main.run(
+        "CLM-1001",
+        "thread-6",
+        stub(
+            calls(("list_document_sections", {"document": "wording"})),
+            calls(("get_document_section", {"document": "wording", "number": 3})),
+            calls(("get_document_section", {"document": "manual", "number": 10})),
+            calls(("get_document_section", {"document": "manual", "number": 99})),
+            AIMessage(content="Read them."),
+        ),
+    )
+    read = [s["text"] for s in steps(client) if s["kind"] == "read"]
+    assert read == [
+        "Policy wording, 3. Trip Delay",
+        "Claims manual, 10. Meals without receipts",
+    ]
+    assert any("Error 404" in s["text"] for s in steps(client))
+
+
+def test_a_tool_that_fails_comes_back_to_the_model_as_text(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    real = main.call
+
+    def flaky(method: str, path: str, body: dict[str, object] | None = None) -> str:
+        if method == "GET" and path == "/api/claims/CLM-1001":
+            raise httpx.ReadTimeout("slow")
+        return real(method, path, body)
+
+    monkeypatch.setattr(main, "call", flaky)
+    monkeypatch.setattr(main, "RETRY_DELAY", 0)
+    reply = main.run(
+        "CLM-1001",
+        "thread-7",
+        stub(
+            calls(("get_claim", {"claim_id": "CLM-1001"})), AIMessage(content="Slow.")
+        ),
+    )
+    assert reply == "Slow."
+    assert "ReadTimeout" in steps(client)[1]["text"]
+
+
+def test_a_claim_that_loops_is_stopped_and_goes_back_to_waiting(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(main, "CALL_LIMIT", 3)
+    looping = StubModel(
+        messages=itertools.repeat(calls(("get_claim", {"claim_id": "CLM-1001"})))
+    )
+    monkeypatch.setattr(
+        backend_main,
+        "run_claim_agent",
+        lambda claim_id, thread_id: main.run(claim_id, thread_id, looping),
+    )
+    assert client.post("/api/claims/CLM-1001/run").status_code == 202
+    assert claim(client)["state"] == "waiting"
+    assert steps(client)[-1]["kind"] == "error"
+    assert len([s for s in steps(client) if s["kind"] == "tool_call"]) == 3

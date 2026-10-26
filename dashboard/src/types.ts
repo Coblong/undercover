@@ -87,7 +87,7 @@ export interface ClaimHistory {
 
 export interface Step {
   id: number;
-  kind: "tool_call" | "tool_result" | "message" | "error";
+  kind: "tool_call" | "tool_result" | "message" | "read" | "error";
   text: string;
   created_at: string;
 }

@@ -4,14 +4,15 @@ import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, closing
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI
 
 from agent.main import run as run_claim_agent
-from backend import queries, rules
-from backend.db import DATA, connect, get_db, init_db
+from backend import documents, queries, rules
+from backend.db import connect, get_db, init_db
+from backend.documents import DocumentName
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
@@ -21,13 +22,16 @@ from backend.models import (
     Outcome,
     PaymentRequest,
     Policy,
+    Section,
+    SectionRef,
     SignOffRequest,
     Step,
     StepRequest,
     Text,
 )
 
-INSTRUCTIONS = Path(__file__).resolve().parent / "instructions.md"
+HERE = Path(__file__).resolve().parent
+AgentName = Literal["queue", "claim"]
 
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
 
@@ -72,16 +76,24 @@ def get_claim_history(customer_id: str, conn: Db) -> ClaimHistory:
     return queries.get_claim_history(conn, customer_id)
 
 
-@app.get("/api/policy-wording", operation_id="get_policy_wording")
-def get_policy_wording() -> Text:
-    """Get the policy wording, the contract with the customer."""
-    return Text(text=(DATA / "policy_wording.md").read_text())
+@app.get("/api/documents/{document}/sections", operation_id="list_document_sections")
+def list_document_sections(document: DocumentName) -> list[SectionRef]:
+    """List the sections of the policy wording or the claims manual."""
+    return documents.list_sections(document)
 
 
-@app.get("/api/instructions", operation_id="get_instructions")
-def get_instructions() -> Text:
-    """Get the UnderCover Agent's instructions."""
-    return Text(text=INSTRUCTIONS.read_text())
+@app.get(
+    "/api/documents/{document}/sections/{number}", operation_id="get_document_section"
+)
+def get_document_section(document: DocumentName, number: int) -> Section:
+    """Get one section of the policy wording or the claims manual."""
+    return documents.get_section(document, number)
+
+
+@app.get("/api/instructions/{agent}", operation_id="get_instructions")
+def get_instructions(agent: AgentName) -> Text:
+    """Get the instructions of the queue agent or the claim agent."""
+    return Text(text=(HERE / f"instructions_{agent}.md").read_text())
 
 
 @app.get("/api/handlers", operation_id="list_handlers")

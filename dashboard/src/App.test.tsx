@@ -43,7 +43,8 @@ it("shows a loading message, then an error when the queue cannot be loaded", asy
 it("switches to the instructions and back", async () => {
   stubApi({
     "/api/claims": summaries,
-    "/api/instructions": { text: "Decide from the wording." },
+    "/api/instructions/queue": { text: "Plan the queue." },
+    "/api/instructions/claim": { text: "Decide from the wording." },
   });
   render(<App />);
   await userEvent.click(screen.getByRole("button", { name: "Instructions" }));
