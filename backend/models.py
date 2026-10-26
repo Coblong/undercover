@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 State = Literal[
     "waiting", "in_progress", "waiting_for_sign_off", "decided", "left_for_handler"
@@ -148,3 +148,33 @@ class SignOffRequest(BaseModel):
 class StepRequest(BaseModel):
     kind: Literal["tool_call", "tool_result", "message", "read", "error"]
     text: str
+
+
+TodoStatus = Literal["to_do", "in_progress", "done", "left_for_handler"]
+
+
+class Todo(BaseModel):
+    text: str
+    status: TodoStatus
+
+
+class Run(BaseModel):
+    run_id: int
+    limit: int
+    state: Literal["running", "finished", "failed"]
+    summary: str
+    started_at: str
+    ended_at: str | None
+    todos: list[Todo]
+
+
+class StartRunRequest(BaseModel):
+    limit: int = Field(ge=1)
+
+
+class TodosRequest(BaseModel):
+    todos: list[Todo]
+
+
+class FinishRunRequest(BaseModel):
+    summary: str

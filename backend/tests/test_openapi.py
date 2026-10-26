@@ -16,6 +16,11 @@ OPERATIONS = {
     "pay_claim",
     "sign_off_claim",
     "run_agent",
+    "start_run",
+    "get_latest_run",
+    "write_todos",
+    "work_claim",
+    "finish_run",
 }
 
 

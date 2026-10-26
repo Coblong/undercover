@@ -10,7 +10,8 @@ from uuid import uuid4
 from fastapi import BackgroundTasks, Depends, FastAPI
 
 from agent.main import run as run_claim_agent
-from backend import documents, queries, rules
+from agent.queue import run_queue as run_queue_agent
+from backend import documents, queries, rules, runs
 from backend.db import connect, get_db, init_db
 from backend.documents import DocumentName
 from backend.models import (
@@ -18,16 +19,21 @@ from backend.models import (
     ClaimHistory,
     ClaimSummary,
     DecisionRequest,
+    FinishRunRequest,
     Handler,
     Outcome,
     PaymentRequest,
     Policy,
+    Run,
     Section,
     SectionRef,
     SignOffRequest,
+    StartRunRequest,
+    State,
     Step,
     StepRequest,
     Text,
+    TodosRequest,
 )
 
 HERE = Path(__file__).resolve().parent
@@ -42,6 +48,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_db()
     with closing(connect()) as conn:
         rules.recover(conn)
+        runs.recover(conn)
     yield
 
 
@@ -134,20 +141,68 @@ def sign_off_claim(claim_id: str, body: SignOffRequest, conn: Db) -> Outcome:
     return rules.sign_off(conn, claim_id, body)
 
 
-def execute_run(claim_id: str) -> None:
-    """Run the agent on a claim, then tidy up if it left the claim undecided."""
+def execute_attempt(claim_id: str) -> State:
+    """Run the claim agent on a claim that has been started, then end the attempt."""
     error = None
     try:
         run_claim_agent(claim_id, f"{claim_id}-{uuid4().hex[:8]}")
     except Exception as exc:  # the run is in the background, so nobody else sees this
         error = f"The agent stopped with an error: {exc}"
     with closing(connect()) as conn:
-        rules.end_attempt(conn, claim_id, error)
+        return rules.end_attempt(conn, claim_id, error)
 
 
 @app.post("/api/claims/{claim_id}/run", operation_id="run_agent", status_code=202)
 def run_agent(claim_id: str, conn: Db, background: BackgroundTasks) -> Outcome:
     """Start the agent on a waiting claim."""
     outcome = rules.start_attempt(conn, claim_id)
-    background.add_task(execute_run, claim_id)
+    background.add_task(execute_attempt, claim_id)
     return outcome
+
+
+def execute_queue(run_id: int) -> None:
+    """Run the queue agent, then close the run if it left it going."""
+    error = None
+    try:
+        run_queue_agent(run_id)
+    except Exception as exc:  # the run is in the background, so nobody else sees this
+        error = f"The queue agent stopped with an error: {exc}"
+    with closing(connect()) as conn:
+        runs.close_if_running(conn, run_id, error)
+
+
+@app.post("/api/runs", operation_id="start_run", status_code=202)
+def start_run(body: StartRunRequest, conn: Db, background: BackgroundTasks) -> Run:
+    """Start the queue agent on the waiting claims, up to a limit."""
+    run = runs.create(conn, body.limit)
+    background.add_task(execute_queue, run.run_id)
+    return run
+
+
+@app.get("/api/runs/latest", operation_id="get_latest_run")
+def get_latest_run(conn: Db) -> Run | None:
+    """Get the latest run of the queue agent with its to-do list."""
+    return runs.get_latest(conn)
+
+
+@app.put("/api/runs/{run_id}/todos", operation_id="write_todos")
+def write_todos(run_id: int, body: TodosRequest, conn: Db) -> Run:
+    """Replace the to-do list of a run."""
+    return runs.write_todos(conn, run_id, body.todos)
+
+
+@app.post("/api/runs/{run_id}/claims/{claim_id}/work", operation_id="work_claim")
+def work_claim(run_id: int, claim_id: str, conn: Db) -> Outcome:
+    """Work one claim in a run with a fresh claim agent and report the result."""
+    runs.check_can_start(conn, run_id, claim_id)
+    rules.start_attempt(conn, claim_id, run_id)
+    state = execute_attempt(claim_id)
+    return Outcome(
+        claim_id=claim_id, state=state, message=rules.result_line(conn, claim_id)
+    )
+
+
+@app.post("/api/runs/{run_id}/finish", operation_id="finish_run")
+def finish_run(run_id: int, body: FinishRunRequest, conn: Db) -> Run:
+    """End a run with a summary, if no waiting claim has been missed."""
+    return runs.finish(conn, run_id, body.summary)

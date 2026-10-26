@@ -69,6 +69,21 @@ CREATE TABLE IF NOT EXISTS attempts (
     started_at TEXT NOT NULL,
     failed INTEGER
 );
+CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_limit INTEGER NOT NULL,
+    state TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    ended_at TEXT
+);
+CREATE TABLE IF NOT EXISTS todos (
+    run_id INTEGER NOT NULL,
+    position INTEGER NOT NULL,
+    text TEXT NOT NULL,
+    status TEXT NOT NULL,
+    PRIMARY KEY (run_id, position)
+);
 CREATE TABLE IF NOT EXISTS steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,

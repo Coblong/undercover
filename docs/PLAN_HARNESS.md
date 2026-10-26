@@ -97,13 +97,13 @@ Builds the backend half of the queue run: the run record, the stored to-do list,
 
 Success criteria:
 
-- [ ] Tests pass for: a run with `limit` 2 started on 25 waiting claims lets two claims start and refuses a third with a 409; the other 23 stay `waiting`.
-- [ ] A test shows a claim that failed once in a run can be started again in that run without using up the cap.
-- [ ] A test shows `finish_run` is refused, naming the claims, when a waiting claim could still be started under the limit, and when a claim is waiting for a retry; and is accepted when neither holds, including when the limit is reached with other claims still waiting.
-- [ ] A test shows `write_todos` replaces the list, keeps the order, and rejects a status that is not one of the four (422); `get_latest_run` returns the limit, state, summary and items.
-- [ ] A test shows a run that was `running` when the backend started is ended as failed.
-- [ ] A test shows one failing claim does not stop `work_claim` on the next claim: the result line says what went wrong and the run continues.
-- [ ] `npm run check:python` passes.
+- [x] Tests pass for: a run with `limit` 2 started on 25 waiting claims lets two claims start and refuses a third with a 409; the other 23 stay `waiting`.
+- [x] A test shows a claim that failed once in a run can be started again in that run without using up the cap.
+- [x] A test shows `finish_run` is refused, naming the claims, when a waiting claim could still be started under the limit, and when a claim is waiting for a retry; and is accepted when neither holds, including when the limit is reached with other claims still waiting.
+- [x] A test shows `write_todos` replaces the list, keeps the order, and rejects a status that is not one of the four (422); `get_latest_run` returns the limit, state, summary and items.
+- [x] A test shows a run that was `running` when the backend started is ended as failed.
+- [x] A test shows one failing claim does not stop `work_claim` on the next claim: the result line says what went wrong and the run continues.
+- [x] `npm run check:python` passes.
 
 ## Phase 4: The queue agent and the command line
 

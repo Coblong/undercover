@@ -258,3 +258,26 @@ def recover(conn: sqlite3.Connection) -> None:
     stuck = conn.execute("SELECT claim_id FROM claims WHERE state = 'in_progress'")
     for row in stuck.fetchall():
         end_attempt(conn, row["claim_id"], "The backend stopped during this attempt.")
+
+
+def result_line(conn: sqlite3.Connection, claim_id: str) -> str:
+    """Say in one line how the work on a claim ended."""
+    claim = queries.get_claim(conn, claim_id)
+    decision = claim.decision
+    if claim.state == "left_for_handler":
+        return f"{claim_id} failed twice and is left for a handler."
+    if claim.state == "waiting" or decision is None:
+        problem = conn.execute(
+            "SELECT text FROM steps WHERE claim_id = ? AND kind = 'error'"
+            " ORDER BY id DESC LIMIT 1",
+            (claim_id,),
+        ).fetchone()
+        return (
+            f"{claim_id} failed ({problem['text']}) and is waiting to be tried again."
+        )
+    line = f"{claim_id} decided: {decision.decision}"
+    if decision.decision != "approve":
+        return line + "."
+    if claim.payment is not None:
+        return f"{line} {money(decision.payout)}, paid."
+    return f"{line} {money(decision.payout)}, waiting for a handler's sign-off."
