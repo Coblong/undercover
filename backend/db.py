@@ -62,6 +62,13 @@ CREATE TABLE IF NOT EXISTS sign_offs (
     handler_id TEXT NOT NULL,
     signed_off_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    claim_id TEXT NOT NULL,
+    run_id INTEGER,
+    started_at TEXT NOT NULL,
+    failed INTEGER
+);
 CREATE TABLE IF NOT EXISTS steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     claim_id TEXT NOT NULL,

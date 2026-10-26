@@ -4,7 +4,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-State = Literal["waiting", "in_progress", "waiting_for_sign_off", "decided"]
+State = Literal[
+    "waiting", "in_progress", "waiting_for_sign_off", "decided", "left_for_handler"
+]
 
 
 class Item(BaseModel):

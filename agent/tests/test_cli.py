@@ -21,6 +21,8 @@ def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> N
             "policy_section": "3. Trip Delay",
         }
         main.call("POST", f"/api/claims/{claim_id}/decision", body)
+        if claim_id == "CLM-1001":
+            main.call("POST", f"/api/claims/{claim_id}/payment", {"amount": 420})
         return "done"
 
     monkeypatch.setattr(backend_main, "run_claim_agent", decide_on_the_spot)

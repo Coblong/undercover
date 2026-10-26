@@ -40,6 +40,8 @@ Db = Annotated[sqlite3.Connection, Depends(get_db)]
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Create and seed the database before serving."""
     init_db()
+    with closing(connect()) as conn:
+        rules.recover(conn)
     yield
 
 
@@ -140,12 +142,12 @@ def execute_run(claim_id: str) -> None:
     except Exception as exc:  # the run is in the background, so nobody else sees this
         error = f"The agent stopped with an error: {exc}"
     with closing(connect()) as conn:
-        rules.finish_run(conn, claim_id, error)
+        rules.end_attempt(conn, claim_id, error)
 
 
 @app.post("/api/claims/{claim_id}/run", operation_id="run_agent", status_code=202)
 def run_agent(claim_id: str, conn: Db, background: BackgroundTasks) -> Outcome:
     """Start the agent on a waiting claim."""
-    outcome = rules.start_run(conn, claim_id)
+    outcome = rules.start_attempt(conn, claim_id)
     background.add_task(execute_run, claim_id)
     return outcome

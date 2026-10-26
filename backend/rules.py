@@ -16,6 +16,8 @@ from backend.models import (
     StepRequest,
 )
 
+MAX_FAILED_ATTEMPTS = 2
+
 
 def money(amount: float) -> str:
     """Format an amount in US dollars."""
@@ -79,6 +81,10 @@ def decide(conn: sqlite3.Connection, claim_id: str, body: DecisionRequest) -> Ou
 def pay(conn: sqlite3.Connection, claim_id: str, body: PaymentRequest) -> Outcome:
     """Pay an approved claim, unless the payout is over the limit and not signed off."""
     claim = queries.get_claim(conn, claim_id)
+    if claim.state == "left_for_handler":
+        raise HTTPException(
+            409, f"Claim {claim_id} is left for a handler, so it cannot be paid here"
+        )
     if claim.decision is None or claim.decision.decision != "approve":
         raise HTTPException(
             409, f"Claim {claim_id} has no approval, so there is nothing to pay"
@@ -154,8 +160,10 @@ def add_step(conn: sqlite3.Connection, claim_id: str, body: StepRequest) -> Step
     )
 
 
-def start_run(conn: sqlite3.Connection, claim_id: str) -> Outcome:
-    """Mark a waiting claim as in progress, or refuse if it is not waiting."""
+def start_attempt(
+    conn: sqlite3.Connection, claim_id: str, run_id: int | None = None
+) -> Outcome:
+    """Mark a waiting claim as in progress and record the attempt, or refuse."""
     state = queries.claim_state(conn, claim_id)
     with conn:
         started = conn.execute(
@@ -163,6 +171,11 @@ def start_run(conn: sqlite3.Connection, claim_id: str) -> Outcome:
             " WHERE claim_id = ? AND state = 'waiting'",
             (claim_id,),
         ).rowcount
+        if started:
+            conn.execute(
+                "INSERT INTO attempts (claim_id, run_id, started_at) VALUES (?, ?, ?)",
+                (claim_id, run_id, now()),
+            )
     if not started:
         raise HTTPException(
             409, f"Claim {claim_id} is {state}, so the agent cannot start on it"
@@ -172,27 +185,76 @@ def start_run(conn: sqlite3.Connection, claim_id: str) -> Outcome:
     )
 
 
-def finish_run(conn: sqlite3.Connection, claim_id: str, error: str | None) -> None:
-    """End a run: settle a decided claim, or put an undecided one back to waiting."""
-    if error is not None:
-        add_step(conn, claim_id, StepRequest(kind="error", text=error))
+def unfinished_reason(conn: sqlite3.Connection, claim_id: str) -> str | None:
+    """Say what is missing from a claim's work, or None when it is complete."""
     decision = conn.execute(
         "SELECT decision, payout FROM decisions WHERE claim_id = ?", (claim_id,)
     ).fetchone()
-    if decision is None and error is None:
+    if decision is None:
+        return "The agent finished without deciding the claim."
+    paid = conn.execute(
+        "SELECT 1 FROM payments WHERE claim_id = ?", (claim_id,)
+    ).fetchone()
+    if (
+        decision["decision"] == "approve"
+        and decision["payout"] <= payout_limit()
+        and not paid
+    ):
+        return "The agent approved the claim but did not pay it."
+    return None
+
+
+def end_attempt(conn: sqlite3.Connection, claim_id: str, error: str | None) -> State:
+    """End an attempt and return the state the claim rests in.
+
+    A claim with unfinished work goes back to waiting, or is left for a handler
+    once two attempts have failed. Finished work settles as the decision says.
+    """
+    if error is not None:
+        add_step(conn, claim_id, StepRequest(kind="error", text=error))
+    reason = unfinished_reason(conn, claim_id)
+    if reason is not None and error is None:
+        add_step(conn, claim_id, StepRequest(kind="error", text=reason))
+    failed = error is not None or reason is not None
+    with conn:
+        conn.execute(
+            "UPDATE attempts SET failed = ? WHERE failed IS NULL AND claim_id = ?",
+            (int(failed), claim_id),
+        )
+    new_state: State
+    if reason is None:
+        decision = conn.execute(
+            "SELECT decision, payout FROM decisions WHERE claim_id = ?", (claim_id,)
+        ).fetchone()
+        new_state = settled_state(decision["decision"], decision["payout"])
+    elif failed_attempts(conn, claim_id) >= MAX_FAILED_ATTEMPTS:
         add_step(
             conn,
             claim_id,
             StepRequest(
-                kind="error", text="The agent finished without deciding the claim."
+                kind="error",
+                text="The claim failed twice, so it is left for a handler.",
             ),
         )
-    new_state = (
-        "waiting"
-        if decision is None
-        else settled_state(decision["decision"], decision["payout"])
-    )
+        new_state = "left_for_handler"
+    else:
+        new_state = "waiting"
     with conn:
         conn.execute(
             "UPDATE claims SET state = ? WHERE claim_id = ?", (new_state, claim_id)
         )
+    return new_state
+
+
+def failed_attempts(conn: sqlite3.Connection, claim_id: str) -> int:
+    """Count the attempts on a claim that failed."""
+    return conn.execute(
+        "SELECT COUNT(*) FROM attempts WHERE claim_id = ? AND failed = 1", (claim_id,)
+    ).fetchone()[0]
+
+
+def recover(conn: sqlite3.Connection) -> None:
+    """Settle claims left in progress by a backend that stopped."""
+    stuck = conn.execute("SELECT claim_id FROM claims WHERE state = 'in_progress'")
+    for row in stuck.fetchall():
+        end_attempt(conn, row["claim_id"], "The backend stopped during this attempt.")

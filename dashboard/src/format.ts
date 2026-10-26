@@ -7,6 +7,7 @@ export const STATES: State[] = [
   "in_progress",
   "waiting_for_sign_off",
   "decided",
+  "left_for_handler",
 ];
 
 export const STATE_LABEL: Record<State, string> = {
@@ -14,6 +15,7 @@ export const STATE_LABEL: Record<State, string> = {
   in_progress: "In progress",
   waiting_for_sign_off: "Waiting for sign-off",
   decided: "Decided",
+  left_for_handler: "Left for a handler",
 };
 
 export const STATE_TONE: Record<State, Tone> = {
@@ -21,6 +23,7 @@ export const STATE_TONE: Record<State, Tone> = {
   in_progress: "cerulean",
   waiting_for_sign_off: "coral",
   decided: "seagreen",
+  left_for_handler: "raspberry",
 };
 
 export const VERDICT_LABEL: Record<Verdict, string> = {

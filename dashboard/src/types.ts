@@ -1,5 +1,9 @@
 export type State =
-  "waiting" | "in_progress" | "waiting_for_sign_off" | "decided";
+  | "waiting"
+  | "in_progress"
+  | "waiting_for_sign_off"
+  | "decided"
+  | "left_for_handler";
 
 export type Verdict = "approve" | "decline" | "refer";
 

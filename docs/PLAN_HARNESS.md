@@ -79,12 +79,12 @@ Makes a failed claim go back, try again once, and then be left for a handler, an
 
 Success criteria:
 
-- [ ] Tests pass for: a crash with no decision returns the claim to `waiting` with one failed attempt; a second failed attempt leaves it `left_for_handler`; a run that finishes without deciding counts as failed; an approval of $420 with no payment goes back to `waiting`, and a retry on a stub model that only pays ends `decided` with exactly one decision and one payment.
-- [ ] A test shows a left-for-handler claim cannot be started again (409) and cannot be decided or paid.
-- [ ] A test shows startup recovery: a database with an `in_progress` claim, opened with the app, has the claim back in `waiting` with a failed attempt and an error step.
-- [ ] A test shows an approval over $1,000 that fails after deciding settles to `waiting_for_sign_off`, not `waiting`.
-- [ ] With the backend running and a stubbed failing runner, `POST /api/claims/CLM-1001/run` twice leaves `CLM-1001` as `left_for_handler`, checked with `GET /api/claims/CLM-1001`.
-- [ ] `npm run check:python` passes with at least 80% coverage.
+- [x] Tests pass for: a crash with no decision returns the claim to `waiting` with one failed attempt; a second failed attempt leaves it `left_for_handler`; a run that finishes without deciding counts as failed; an approval of $420 with no payment goes back to `waiting`, and a retry on a stub model that only pays ends `decided` with exactly one decision and one payment.
+- [x] A test shows a left-for-handler claim cannot be started again (409) and cannot be decided or paid.
+- [x] A test shows startup recovery: a database with an `in_progress` claim, opened with the app, has the claim back in `waiting` with a failed attempt and an error step.
+- [x] A test shows an approval over $1,000 that fails after deciding settles to `waiting_for_sign_off`, not `waiting`.
+- [x] With the backend running and a stubbed failing runner, `POST /api/claims/CLM-1001/run` twice leaves `CLM-1001` as `left_for_handler`, checked with `GET /api/claims/CLM-1001`.
+- [x] `npm run check:python` passes with at least 80% coverage.
 
 ## Phase 3: A run, its to-do list and the cap
 
