@@ -80,7 +80,7 @@ function Plan({ run }: Readonly<{ run: Run }>) {
           <p className="muted">The agent is planning its work.</p>
         )
       )}
-      {run.summary && <p>{run.summary}</p>}
+      {run.summary && <p className="summary">{run.summary}</p>}
     </>
   );
 }

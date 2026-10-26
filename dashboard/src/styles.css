@@ -472,3 +472,7 @@ input[type="number"] {
   border-radius: 999px;
   background: var(--selected);
 }
+
+.summary {
+  white-space: pre-wrap;
+}

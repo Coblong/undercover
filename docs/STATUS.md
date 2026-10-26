@@ -1,13 +1,13 @@
 # Status
 
-The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent.
+The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent. The harness build, following `docs/PLAN_HARNESS.md`, has the agent run the queue from a to-do list, hand each claim to a fresh claim agent, look up the wording and the claims manual by section, and recover from failures.
 
 ## Run it
 
 - `uv sync` and `npm install`. Put `OPENROUTER_API_KEY` in `.env`. Set `MODEL_NAME` to use another model, such as `openrouter/free`.
 - `npm run dev` starts the backend (port 8000) and the dashboard (port 5173, open http://localhost:5173).
-- The database is `backend/undercover.db` (git-ignored), created and seeded from `data/` on first start. Delete it, with the backend stopped, to start again from the seed data.
-- Run the agent from the command line while the backend runs: `uv run -m agent` works every waiting claim as one run, `uv run -m agent --limit 5` works at most five and leaves the rest waiting, and `uv run -m agent CLM-1001` works one claim. A single claim can also be run from the dashboard ("Run agent").
+- The database is `backend/undercover.db` (git-ignored), created and seeded from `data/` on first start. Delete it, with the backend stopped, to start again from the seed data. For a trial with the real model, reseed first and cap the run at five claims.
+- Run the agent from the command line while the backend runs: `uv run -m agent` works every waiting claim as one run, `uv run -m agent --limit 5` works at most five and leaves the rest waiting, and `uv run -m agent CLM-1001` works one claim. The dashboard has "Run the queue" (a number of claims) and, on a waiting claim, "Run agent".
 - `npm run check` runs every check: ruff, pyright and pytest at 80% coverage; ESLint, Prettier, tsc and vitest at 80% coverage; Playwright. `npm run e2e` runs only Playwright, on its own backend (port 8001), dashboard (port 5174) and a new database in the temp folder, so it never touches the dev database.
 
 ## What is built
@@ -25,11 +25,23 @@ The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for 
 
 ## Checked live
 
-On 15 October 2026 the agent, with the default model, ran on five claims: CLM-1001, CLM-1002, CLM-1011, CLM-1016 and CLM-1019. All finished. Four were decided and the payments under $1,000 were made. CLM-1011, at $1,110, stopped at `waiting_for_sign_off` with no payment. Each explanation was two sentences and named a policy section. The results were not compared with `data/evals/`.
+On 26 October 2026, after reseeding, `uv run -m agent --limit 5` ran on the default model (`deepseek/deepseek-v4.1-flash`, low reasoning). The queue agent wrote a to-do list of five claims, worked them in its own order, ticked each off and finished with a summary. Nothing failed or was retried, and the other 20 claims stayed `waiting`. Each claim's page showed the 10 to 14 sections of the wording and the manual the agent read.
+
+| Claim | Decision | Payout |
+|---|---|---|
+| CLM-1004 | approve | $186.00, paid |
+| CLM-1001 | approve | $420.00, paid |
+| CLM-1012 | decline | $0.00 |
+| CLM-1003 | approve | $3,750.00, waiting for sign-off, no payment |
+| CLM-1016 | decline | $0.00 |
+
+The results were not compared with `data/evals/`.
 
 ## Open items
 
-- Payouts vary between runs of the same claim (CLM-1002 came out at $400 and at $580), because the model does the arithmetic. Scoring the agent against `data/evals/` and any fix for the arithmetic are for a later build.
+- Payouts may vary between runs of the same claim, because the model does the arithmetic. Scoring the agent against `data/evals/` and any fix for the arithmetic are for a later build.
+- The claim agent reads many sections for each claim (10 to 14 in the live check), more than the instructions strictly need. Narrowing that would cut cost.
+- A claim left for a handler stays there: handlers have no way yet to return it to the queue or decide it from the dashboard.
 - The Instructions view shows the Markdown marks as they are written.
-- "Run all waiting" is only on the command line (`--all`).
-- The claims manual, sign-in, real payments and messages to customers are not built, as the spec says.
+- Claims are worked one at a time. Several at once is not built.
+- Sign-in, real payments and messages to customers are not built, as the spec says.

@@ -152,13 +152,13 @@ Runs the real model once, updates the documents and does the final check. This u
 
 Success criteria:
 
-- [ ] After reseeding, `uv run -m agent --limit 5` finishes without a crash, five claims have a decision or a recorded failure, and 20 claims are still `waiting`.
-- [ ] Any approval over $1,000 in the run is `waiting_for_sign_off` with no payment; no claim has two decisions or two payments (checked with the API).
-- [ ] In the dashboard (Playwright MCP) the to-do list and the summary are shown, and one claim's page shows what it read.
-- [ ] My report lists the five claims, the decisions and payouts, the steps taken, and any retries, without comparing them to `data/evals/`.
-- [ ] `docs/SPEC.md`, `docs/TECH_STACK.md` and `docs/STATUS.md` describe the product as it now is.
-- [ ] `npm run check` passes in full: ruff, pyright, pytest at 80% or more, ESLint, Prettier, tsc, vitest at 80% or more, and Playwright.
-- [ ] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
+- [x] After reseeding, `uv run -m agent --limit 5` finishes without a crash, five claims have a decision or a recorded failure, and 20 claims are still `waiting`.
+- [x] Any approval over $1,000 in the run is `waiting_for_sign_off` with no payment; no claim has two decisions or two payments (checked with the API).
+- [x] In the dashboard (Playwright MCP) the to-do list and the summary are shown, and one claim's page shows what it read.
+- [x] My report lists the five claims, the decisions and payouts, the steps taken, and any retries, without comparing them to `data/evals/`.
+- [x] `docs/SPEC.md`, `docs/TECH_STACK.md` and `docs/STATUS.md` describe the product as it now is.
+- [x] `npm run check` passes in full: ruff, pyright, pytest at 80% or more, ESLint, Prettier, tsc, vitest at 80% or more, and Playwright.
+- [x] `git status` is clean, every phase is committed with the pre-commit hook run, and nothing is pushed.
 
 ## Out of scope
 
