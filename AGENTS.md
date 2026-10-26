@@ -24,7 +24,7 @@ IMPORTANT: before you plan, build or change anything in the product, or answer q
 
 ### Your role in the build
 
-The documents in `docs/` are written as UnderCover's own. The spec comes from UnderCover's head of claims operations, and each later brief from the people at UnderCover who asked for the work. Treat them as the customer's requirements. In the course, the student is UnderCover's forward deployed engineer and you are their coding agent. The student directs the work and reviews your plans and builds. You plan, build and check the work as `docs/PROCESS.md` describes.
+The documents in `docs/` are written as UnderCover's o The spec comes from UnderCover's head of claims operations, and each later brief from the people at UnderCover who asked for the work. Treat them as the customer's requirements. In the course, the student is UnderCover's forward deployed engineer and you are their coding agent. The student directs the work and reviews your plans and builds. You plan, build and check the work as `docs/PROCESS.md` describes.
 
 The student is also here to learn. Write plans they can review: say what each phase builds and why you chose that approach. Explain your work when they ask, at the level they ask for. Then deliver the build to the standards in `docs/`.
 
