@@ -53,14 +53,14 @@ Findings B2, B5, C5, D6, E1 (minimal), A6.
 
 Success criteria:
 
-- [ ] A test shows the tools have no argument the model can use to name another claim or customer, and that each calls only its own claim's routes.
-- [ ] A test starts the agent with no `OPENROUTER_API_KEY` and gets one clear error naming the variable. A real environment variable beats `.env`, and importing `agent.main` reads no file.
-- [ ] A test shows the agent's client uses the configured backend address, and the e2e and dev scripts set it.
-- [ ] A test puts a 500 with a plain-text body and a connection error through `call()` and gets text back in both cases.
-- [ ] A test with `caplog` shows a crashed attempt logs its traceback and an attempt line with its fields, and the step shown has no file path or URL in it.
-- [ ] A test shows the instructions change when `data/company.json` changes and hold no hard-coded `$1,000`, 90 or 12.
-- [ ] A live check on five claims on the default model (reseed first, cap the run at five) finishes with no call refused because of this phase. Report the claims and decisions, without comparing them to `data/evals/`.
-- [ ] `npm run check:python` passes.
+- [x] A test shows the tools have no argument the model can use to name another claim or customer, and that each calls only its own claim's routes.
+- [x] A test starts the agent with no `OPENROUTER_API_KEY` and gets one clear error naming the variable. A real environment variable beats `.env`, and importing `agent.main` reads no file.
+- [x] A test shows the agent's client uses the configured backend address, and the e2e and dev scripts set it.
+- [x] A test puts a 500 with a plain-text body and a connection error through `call()` and gets text back in both cases.
+- [x] A test with `caplog` shows a crashed attempt logs its traceback and an attempt line with its fields, and the step shown has no file path or URL in it.
+- [x] A test shows the instructions change when `data/company.json` changes and hold no hard-coded `$1,000`, 90 or 12.
+- [x] A live check on five claims on the default model (reseed first, cap the run at five) finishes with no call refused because of this phase. Report the claims and decisions, without comparing them to `data/evals/`.
+- [x] `npm run check:python` passes.
 
 ## Phase 3: A cleaner structure
 

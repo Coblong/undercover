@@ -57,7 +57,7 @@ def test_run_that_crashes_leaves_the_claim_waiting(
     assert client.post("/api/claims/CLM-1001/run").status_code == 202
     assert state(client) == "waiting"
     assert [(s["kind"], s["text"]) for s in steps(client)] == [
-        ("error", "The agent stopped with an error: model unavailable")
+        ("error", "The agent stopped with an error (RuntimeError)")
     ]
 
 

@@ -1,10 +1,11 @@
 """The UnderCover backend."""
 
+import logging
 import sqlite3
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, closing
-from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated
 from uuid import uuid4
 
 from fastapi import BackgroundTasks, Depends, FastAPI, Request
@@ -13,9 +14,11 @@ from fastapi.responses import JSONResponse
 
 from agent.main import run as run_claim_agent
 from agent.queue import run_queue as run_queue_agent
-from backend import documents, queries, rules, runs
+from agent.settings import AgentError
+from backend import documents, instructions, queries, rules, runs
 from backend.db import connect, get_db, init_db
 from backend.documents import DocumentName
+from backend.instructions import AgentName
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
@@ -38,15 +41,17 @@ from backend.models import (
     TodosRequest,
 )
 
-HERE = Path(__file__).resolve().parent
-AgentName = Literal["queue", "claim"]
-
 Db = Annotated[sqlite3.Connection, Depends(get_db)]
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Create and seed the database before serving."""
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+    )
     init_db()
     with closing(connect()) as conn:
         rules.recover(conn)
@@ -125,7 +130,7 @@ def get_document_section(document: DocumentName, number: int) -> Section:
 @app.get("/api/instructions/{agent}", operation_id="get_instructions")
 def get_instructions(agent: AgentName) -> Text:
     """Get the instructions of the queue agent or the claim agent."""
-    return Text(text=(HERE / f"instructions_{agent}.md").read_text())
+    return Text(text=instructions.render(agent))
 
 
 @app.get("/api/handlers", operation_id="list_handlers")
@@ -164,22 +169,44 @@ def sign_off_claim(claim_id: str, body: SignOffRequest, conn: Db) -> Outcome:
     return rules.sign_off(conn, claim_id, body)
 
 
-def execute_attempt(claim_id: str) -> State:
+def step_text(who: str, exc: Exception) -> str:
+    """Say in a step that something stopped, without leaking details into the page.
+
+    The traceback goes to the log. The team sees the kind of error, and the
+    message only when the agent itself wrote it for them.
+    """
+    if isinstance(exc, AgentError):
+        return f"{who} stopped with an error: {exc}"
+    return f"{who} stopped with an error ({type(exc).__name__})"
+
+
+def execute_attempt(claim_id: str, run_id: int | None = None) -> State:
     """Run the claim agent on a claim that has been started, then end the attempt."""
+    started = time.monotonic()
     error = None
     try:
         run_claim_agent(claim_id, f"{claim_id}-{uuid4().hex[:8]}")
     except Exception as exc:  # the run is in the background, so nobody else sees this
-        error = f"The agent stopped with an error: {exc}"
+        logger.exception("The agent failed on %s", claim_id)
+        error = step_text("The agent", exc)
     with closing(connect()) as conn:
-        return rules.end_attempt(conn, claim_id, error)
+        state = rules.end_attempt(conn, claim_id, error)
+    logger.info(
+        "Attempt ended: claim=%s run=%s state=%s failed=%s seconds=%.1f",
+        claim_id,
+        run_id,
+        state,
+        error is not None or state in ("waiting", "left_for_handler"),
+        time.monotonic() - started,
+    )
+    return state
 
 
 @app.post("/api/claims/{claim_id}/run", operation_id="run_agent", status_code=202)
 def run_agent(claim_id: str, conn: Db, background: BackgroundTasks) -> Outcome:
     """Start the agent on a waiting claim."""
     outcome = rules.start_attempt(conn, claim_id)
-    background.add_task(execute_attempt, claim_id)
+    background.add_task(execute_attempt, claim_id, None)
     return outcome
 
 
@@ -189,7 +216,8 @@ def execute_queue(run_id: int) -> None:
     try:
         run_queue_agent(run_id)
     except Exception as exc:  # the run is in the background, so nobody else sees this
-        error = f"The queue agent stopped with an error: {exc}"
+        logger.exception("The queue agent failed in run %s", run_id)
+        error = step_text("The queue agent", exc)
     with closing(connect()) as conn:
         runs.close_if_running(conn, run_id, error)
 
@@ -218,7 +246,7 @@ def write_todos(run_id: int, body: TodosRequest, conn: Db) -> Run:
 def work_claim(run_id: int, claim_id: str, conn: Db) -> Outcome:
     """Work one claim in a run with a fresh claim agent and report the result."""
     rules.start_attempt(conn, claim_id, run_id)
-    state = execute_attempt(claim_id)
+    state = execute_attempt(claim_id, run_id)
     return Outcome(
         claim_id=claim_id, state=state, message=rules.result_line(conn, claim_id)
     )

@@ -74,7 +74,7 @@ def test_a_queue_agent_that_crashes_fails_the_run(
     monkeypatch.setattr(main, "run_queue_agent", crash)
     client.post("/api/runs", json={"limit": 5})
     assert latest(client)["summary"] == (
-        "The queue agent stopped with an error: model unavailable"
+        "The queue agent stopped with an error (RuntimeError)"
     )
 
 
@@ -138,7 +138,7 @@ def test_a_failed_claim_does_not_stop_the_run_and_is_retried_within_the_limit(
     failed = work(client, run_id, "CLM-1001").json()
     assert failed["state"] == "waiting"
     assert failed["message"] == (
-        "CLM-1001 failed (The agent stopped with an error: model unavailable)"
+        "CLM-1001 failed (The agent stopped with an error (RuntimeError))"
         " and is waiting to be tried again."
     )
     retried = work(client, run_id, "CLM-1001").json()

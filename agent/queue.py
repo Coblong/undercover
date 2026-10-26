@@ -3,7 +3,6 @@
 import json
 from typing import Any, Literal, TypedDict
 
-import httpx
 from langchain.agents import create_agent
 from langchain.agents.middleware import (
     AgentMiddleware,
@@ -15,6 +14,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool, tool
 
 from agent import main
+from agent.settings import AgentError
 
 CALL_LIMIT = 300
 WORK_TIMEOUT = 900
@@ -48,10 +48,7 @@ def queue_tools(run_id: int) -> list[BaseTool]:
     def work_claim(claim_id: str) -> str:
         """Hand a claim to a fresh helper to work, and get one line back."""
         path = f"/api/runs/{run_id}/claims/{claim_id}/work"
-        try:
-            answer = main.call("POST", path, timeout=WORK_TIMEOUT)
-        except httpx.TimeoutException:
-            return f"Error: no answer for {claim_id}. Check list_waiting_claims."
+        answer = main.call("POST", path, timeout=WORK_TIMEOUT)
         return answer if answer.startswith("Error") else json.loads(answer)["message"]
 
     @tool
@@ -102,4 +99,4 @@ def run_queue(run_id: int, llm: BaseChatModel | None = None) -> None:
                 " worked, then call finish_run.",
             }
         )
-    raise RuntimeError(f"the agent did not finish the run after {REMINDERS} reminders")
+    raise AgentError(f"the agent did not finish the run after {REMINDERS} reminders")

@@ -5,6 +5,7 @@ import json
 import time
 
 from agent.main import call
+from agent.settings import load_environment
 
 
 def report(claim_id: str) -> None:
@@ -66,6 +67,7 @@ def main() -> None:
         "--limit", type=int, help="work at most this many claims in the run"
     )
     args = parser.parse_args()
+    load_environment()
     if args.claim_id and args.limit:
         parser.error("give a claim id or --limit, not both")
     if args.claim_id:

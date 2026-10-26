@@ -1,4 +1,9 @@
+from pathlib import Path
+
+import pytest
 from fastapi.testclient import TestClient
+
+from backend import instructions
 
 
 def test_list_claims(client: TestClient):
@@ -91,3 +96,32 @@ def test_unknown_ids_are_404(client: TestClient):
         "/api/claims/CLM-9999/claim-history",
     ):
         assert client.get(path).status_code == 404
+
+
+def test_the_instructions_carry_the_numbers_from_company_data(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    text = client.get("/api/instructions/claim").json()["text"]
+    assert "approval of $1,000 or less" in text
+    assert "within 90 days" in text
+    assert "filed 3 claims within 12 months" in text
+
+    changed = {
+        "payout_approval_limit": 750,
+        "claim_filing_window_days": 60,
+        "repeat_claim_review": {"claims": 4, "within_months": 6},
+    }
+    monkeypatch.setattr(instructions, "load", lambda name: changed)
+    text = client.get("/api/instructions/claim").json()["text"]
+    assert "approval of $750 or less" in text
+    assert "within 60 days" in text
+    assert "filed 4 claims within 6 months" in text
+
+
+def test_the_instruction_files_hold_no_hard_coded_numbers():
+    for name in ("claim", "queue"):
+        raw = (
+            Path(instructions.__file__).parent / f"instructions_{name}.md"
+        ).read_text()
+        for number in ("$1,000", "90 days", "12 months"):
+            assert number not in raw

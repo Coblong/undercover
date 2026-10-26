@@ -1,6 +1,5 @@
 import os
 import sqlite3
-from collections.abc import Callable
 from contextlib import closing
 from typing import Any
 
@@ -55,8 +54,8 @@ def finish(summary: str = "Done.") -> AIMessage:
 
 def declines(claim_id: str) -> list[AIMessage]:
     return [
-        calls(("get_claim", {"claim_id": claim_id})),
-        calls(decision(claim_id, "decline", 0)),
+        calls(("get_claim", {})),
+        calls(decision("decline", 0)),
         AIMessage(content="Declined."),
     ]
 
@@ -161,7 +160,7 @@ def test_a_run_plans_works_in_its_own_order_and_finishes(
     assert list(states(client).values()).count("waiting") == 22
 
     steps = get(client, "/api/claims/CLM-1001/steps")
-    assert steps[0]["text"] == 'get_claim(claim_id="CLM-1001")'
+    assert steps[0]["text"] == "get_claim()"
     story = get(client, "/api/claims/CLM-1001")["story"]
     assert story[:40] not in " ".join(model.seen)
 
@@ -205,9 +204,7 @@ def test_a_failed_claim_does_not_stop_the_run_and_is_left_after_two_failures(
     )
     queue.run_queue(new_run(3), model)
     seen = " ".join(model.seen)
-    assert (
-        "CLM-1002 failed (The agent stopped with an error: model unavailable)" in seen
-    )
+    assert "CLM-1002 failed (The agent stopped with an error (RuntimeError))" in seen
     assert "waiting to be tried again" in seen
     assert states(client)["CLM-1001"] == "decided"
     assert states(client)["CLM-1002"] == "left_for_handler"
@@ -278,14 +275,16 @@ def test_the_tools_report_what_the_backend_refuses(client: TestClient):
 def test_a_slow_claim_is_reported_not_raised(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
-    real: Callable[..., str] = main.call
+    def slow(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
 
-    def slow(method: str, path: str, *args: Any, **kwargs: Any) -> str:
-        if path.endswith("/work"):
-            raise httpx.ReadTimeout("slow")
-        return real(method, path, *args, **kwargs)
-
-    monkeypatch.setattr(main, "call", slow)
-    tools = {t.name: t for t in queue.queue_tools(new_run(1))}
+    monkeypatch.setattr(
+        main,
+        "backend",
+        lambda timeout=30: httpx.Client(
+            transport=httpx.MockTransport(slow), base_url="http://backend"
+        ),
+    )
+    tools = {t.name: t for t in queue.queue_tools(1)}
     answer = tools["work_claim"].invoke({"claim_id": "CLM-1001"})
-    assert answer == "Error: no answer for CLM-1001. Check list_waiting_claims."
+    assert answer == "Error: the backend did not answer (ReadTimeout)"

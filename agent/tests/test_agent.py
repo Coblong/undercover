@@ -24,22 +24,71 @@ def steps(client: TestClient, claim_id: str = "CLM-1001") -> list[dict[str, str]
     return client.get(f"/api/claims/{claim_id}/steps").json()
 
 
+def tools_for(claim_id: str = "CLM-1001") -> dict[str, Any]:
+    return {t.name: t for t in main.claim_tools(claim_id)}
+
+
 def test_read_tools():
-    assert "Rome" in main.get_claim.invoke({"claim_id": "CLM-1001"})
-    assert '"plan":"premium"' in main.get_policy.invoke({"policy_id": "POL-2001"})
-    history = main.get_claim_history.invoke({"claim_id": "CLM-1001"})
+    tools = tools_for()
+    assert "Rome" in tools["get_claim"].invoke({})
+    assert '"plan":"premium"' in tools["get_policy"].invoke({})
+    history = tools["get_claim_history"].invoke({})
     assert "CLM-0412" in history
     assert "email" not in history
-    sections = main.list_document_sections.invoke({"document": "manual"})
+    sections = tools["list_document_sections"].invoke({"document": "manual"})
     assert "Repeat claims" in sections
-    section = main.get_document_section.invoke({"document": "wording", "number": 3})
+    section = tools["get_document_section"].invoke({"document": "wording", "number": 3})
     assert "Trip Delay" in section
 
 
 def test_tools_return_the_reason_when_the_backend_refuses():
-    assert main.get_claim.invoke({"claim_id": "CLM-9999"}).startswith("Error 404")
-    paid = main.pay_claim.invoke({"claim_id": "CLM-1001", "amount": 10})
+    assert tools_for("CLM-9999")["get_claim"].invoke({}).startswith("Error 404")
+    assert tools_for("CLM-9999")["get_policy"].invoke({}).startswith("Error 404")
+    paid = tools_for()["pay_claim"].invoke({"amount": 10})
     assert paid.startswith("Error 409")
+    refused = tools_for()["decide_claim"].invoke(
+        {
+            "decision": "approve",
+            "payout": 5000,
+            "explanation": "Covered.",
+            "policy_section": "3. Trip Delay",
+        }
+    )
+    assert refused.startswith("Error 422: The payout is more than the $420.00 claimed")
+
+
+def test_the_tools_cannot_name_another_claim_or_customer():
+    names = {"claim_id", "customer_id", "policy_id"}
+    for tool in main.claim_tools("CLM-1001"):
+        assert not names & set(tool.args), tool.name
+
+
+def test_every_tool_reaches_only_its_own_claim(monkeypatch: pytest.MonkeyPatch):
+    paths: list[str] = []
+    real = main.call
+
+    def spy(method: str, path: str, *args: Any, **kwargs: Any) -> str:
+        paths.append(path)
+        return real(method, path, *args, **kwargs)
+
+    monkeypatch.setattr(main, "call", spy)
+    tools = tools_for("CLM-1002")
+    tools["get_claim"].invoke({})
+    tools["get_policy"].invoke({})
+    tools["get_claim_history"].invoke({})
+    tools["decide_claim"].invoke(
+        {
+            "decision": "decline",
+            "payout": 0,
+            "explanation": "Not covered.",
+            "policy_section": "9. General exclusions",
+        }
+    )
+    tools["pay_claim"].invoke({"amount": 1})
+    own = [p for p in paths if "CLM-1002" in p]
+    other = [p for p in paths if p not in own]
+    assert len(own) == 5
+    assert other == ["/api/policies/POL-2002"] or all("POL-" in p for p in other)
 
 
 def test_run_approves_and_pays(client: TestClient):
@@ -47,9 +96,9 @@ def test_run_approves_and_pays(client: TestClient):
         "CLM-1001",
         "thread-1",
         stub(
-            calls(("get_claim", {"claim_id": "CLM-1001"})),
-            calls(decision("CLM-1001", "approve", 420)),
-            calls(("pay_claim", {"claim_id": "CLM-1001", "amount": 420})),
+            calls(("get_claim", {})),
+            calls(decision("approve", 420)),
+            calls(("pay_claim", {"amount": 420})),
             AIMessage(content="Approved, $420.00."),
         ),
     )
@@ -66,7 +115,7 @@ def test_run_approves_and_pays(client: TestClient):
         "tool_result",
         "message",
     ]
-    assert steps(client)[0]["text"] == 'get_claim(claim_id="CLM-1001")'
+    assert steps(client)[0]["text"] == "get_claim()"
     assert steps(client)[-1]["text"] == "Approved, $420.00."
 
 
@@ -74,7 +123,7 @@ def test_run_declines(client: TestClient):
     main.run(
         "CLM-1002",
         "thread-2",
-        stub(calls(decision("CLM-1002", "decline", 0)), AIMessage(content="Declined.")),
+        stub(calls(decision("decline", 0)), AIMessage(content="Declined.")),
     )
     done = claim(client, "CLM-1002")
     assert done["state"] == "decided"
@@ -87,8 +136,8 @@ def test_refused_payment_comes_back_to_the_agent(client: TestClient):
         "CLM-1003",
         "thread-3",
         stub(
-            calls(decision("CLM-1003", "approve", 1250)),
-            calls(("pay_claim", {"claim_id": "CLM-1003", "amount": 1250})),
+            calls(decision("approve", 1250)),
+            calls(("pay_claim", {"amount": 1250})),
             AIMessage(content="Approved $1,250.00. Payment waits for sign-off."),
         ),
     )
@@ -184,9 +233,7 @@ def test_a_tool_that_fails_comes_back_to_the_model_as_text(
     reply = main.run(
         "CLM-1001",
         "thread-7",
-        stub(
-            calls(("get_claim", {"claim_id": "CLM-1001"})), AIMessage(content="Slow.")
-        ),
+        stub(calls(("get_claim", {})), AIMessage(content="Slow.")),
     )
     assert reply == "Slow."
     assert "ReadTimeout" in steps(client)[1]["text"]
@@ -196,9 +243,7 @@ def test_a_claim_that_loops_is_stopped_and_goes_back_to_waiting(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     monkeypatch.setattr(main, "CALL_LIMIT", 3)
-    looping = StubModel(
-        messages=itertools.repeat(calls(("get_claim", {"claim_id": "CLM-1001"})))
-    )
+    looping = StubModel(messages=itertools.repeat(calls(("get_claim", {}))))
     monkeypatch.setattr(
         backend_main,
         "run_claim_agent",

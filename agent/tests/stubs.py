@@ -19,9 +19,8 @@ def calls(*calls: tuple[str, dict[str, object]]) -> AIMessage:
     )
 
 
-def decision(claim_id: str, kind: str, payout: float) -> tuple[str, dict[str, object]]:
+def decision(kind: str, payout: float) -> tuple[str, dict[str, object]]:
     args = {
-        "claim_id": claim_id,
         "decision": kind,
         "payout": payout,
         "explanation": "Covered by the wording.",
