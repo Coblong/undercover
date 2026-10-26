@@ -45,32 +45,32 @@ def test_small_approval_is_decided_then_payable(client: TestClient):
 
 
 def test_large_approval_waits_for_sign_off(client: TestClient):
-    response = decide(client, "CLM-1001", "approve", 1250)
+    response = decide(client, "CLM-1003", "approve", 1250)
     assert response.json()["state"] == "waiting_for_sign_off"
     assert "signs off" in response.json()["message"]
-    assert state(client, "CLM-1001") == "waiting_for_sign_off"
+    assert state(client, "CLM-1003") == "waiting_for_sign_off"
 
 
 def test_payout_exactly_at_the_limit_needs_no_sign_off(client: TestClient):
-    assert decide(client, "CLM-1001", "approve", 1000).json()["state"] == "decided"
-    assert pay(client, "CLM-1001", 1000).status_code == 200
+    assert decide(client, "CLM-1003", "approve", 1000).json()["state"] == "decided"
+    assert pay(client, "CLM-1003", 1000).status_code == 200
 
 
 def test_payment_over_the_limit_is_blocked_until_sign_off(client: TestClient):
-    decide(client, "CLM-1001", "approve", 1250)
-    blocked = pay(client, "CLM-1001", 1250)
+    decide(client, "CLM-1003", "approve", 1250)
+    blocked = pay(client, "CLM-1003", 1250)
     assert blocked.status_code == 409
     assert "Payment blocked" in blocked.json()["detail"]
-    assert client.get("/api/claims/CLM-1001").json()["payment"] is None
+    assert client.get("/api/claims/CLM-1003").json()["payment"] is None
 
-    signed = sign_off(client, "CLM-1001")
+    signed = sign_off(client, "CLM-1003")
     assert signed.status_code == 200
     assert signed.json()["message"] == "Dana Whitfield signed off. Paid $1,250.00."
-    claim = client.get("/api/claims/CLM-1001").json()
+    claim = client.get("/api/claims/CLM-1003").json()
     assert claim["state"] == "decided"
     assert claim["payment"]["amount"] == 1250.0
     assert claim["sign_off"]["handler_name"] == "Dana Whitfield"
-    assert pay(client, "CLM-1001", 1250).status_code == 409
+    assert pay(client, "CLM-1003", 1250).status_code == 409
 
 
 def test_payment_must_match_the_approved_payout(client: TestClient):
@@ -125,9 +125,9 @@ def test_sign_off_needs_a_claim_waiting_for_it(client: TestClient):
 
 
 def test_sign_off_by_an_unknown_handler_is_404(client: TestClient):
-    decide(client, "CLM-1001", "approve", 1250)
-    assert sign_off(client, "CLM-1001", "HND-99").status_code == 404
-    assert state(client, "CLM-1001") == "waiting_for_sign_off"
+    decide(client, "CLM-1003", "approve", 1250)
+    assert sign_off(client, "CLM-1003", "HND-99").status_code == 404
+    assert state(client, "CLM-1003") == "waiting_for_sign_off"
 
 
 def test_steps_are_listed_in_order(client: TestClient):
@@ -141,7 +141,7 @@ def test_steps_are_listed_in_order(client: TestClient):
 
 def test_states_across_the_queue(client: TestClient):
     decide(client, "CLM-1001", "approve", 420)
-    decide(client, "CLM-1002", "approve", 1250)
+    decide(client, "CLM-1002", "approve", 1100)
     states = {c["claim_id"]: c["state"] for c in client.get("/api/claims").json()}
     assert states["CLM-1001"] == "decided"
     assert states["CLM-1002"] == "waiting_for_sign_off"
@@ -153,6 +153,6 @@ def test_handler_without_authority_cannot_sign_off(client: TestClient):
         conn.execute(
             "UPDATE handlers SET can_approve_over_limit = 0 WHERE handler_id = 'HND-03'"
         )
-    decide(client, "CLM-1001", "approve", 1250)
-    assert sign_off(client, "CLM-1001", "HND-03").status_code == 403
-    assert state(client, "CLM-1001") == "waiting_for_sign_off"
+    decide(client, "CLM-1003", "approve", 1250)
+    assert sign_off(client, "CLM-1003", "HND-03").status_code == 403
+    assert state(client, "CLM-1003") == "waiting_for_sign_off"

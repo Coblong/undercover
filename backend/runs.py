@@ -5,7 +5,7 @@ import sqlite3
 from fastapi import HTTPException
 
 from backend import queries
-from backend.db import now
+from backend.db import now, transaction
 from backend.models import Run, Todo
 
 SHOWN = 10
@@ -38,9 +38,9 @@ def get_latest(conn: sqlite3.Connection) -> Run | None:
 
 def create(conn: sqlite3.Connection, limit: int) -> Run:
     """Start a run, unless one is already going."""
-    if conn.execute("SELECT 1 FROM runs WHERE state = 'running'").fetchone():
-        raise HTTPException(409, "A run is already going")
-    with conn:
+    with transaction(conn):
+        if conn.execute("SELECT 1 FROM runs WHERE state = 'running'").fetchone():
+            raise HTTPException(409, "A run is already going")
         cursor = conn.execute(
             "INSERT INTO runs (claim_limit, state, summary, started_at)"
             " VALUES (?, 'running', '', ?)",
@@ -59,8 +59,8 @@ def running_run(conn: sqlite3.Connection, run_id: int) -> Run:
 
 def write_todos(conn: sqlite3.Connection, run_id: int, todos: list[Todo]) -> Run:
     """Replace a run's to-do list."""
-    running_run(conn, run_id)
-    with conn:
+    with transaction(conn):
+        running_run(conn, run_id)
         conn.execute("DELETE FROM todos WHERE run_id = ?", (run_id,))
         conn.executemany(
             "INSERT INTO todos VALUES (?, ?, ?, ?)",
@@ -100,34 +100,46 @@ def missed_claims(conn: sqlite3.Connection, run_id: int) -> list[str]:
     return [claim_id for claim_id in ids if claim_id in started]
 
 
+def set_ended(conn: sqlite3.Connection, run_id: int, state: str, summary: str) -> None:
+    """Close a run. The caller holds the transaction."""
+    conn.execute(
+        "UPDATE runs SET state = ?, summary = ?, ended_at = ? WHERE id = ?",
+        (state, summary, now(), run_id),
+    )
+
+
 def end(conn: sqlite3.Connection, run_id: int, state: str, summary: str) -> None:
     """Close a run."""
-    with conn:
-        conn.execute(
-            "UPDATE runs SET state = ?, summary = ?, ended_at = ? WHERE id = ?",
-            (state, summary, now(), run_id),
-        )
+    with transaction(conn):
+        set_ended(conn, run_id, state, summary)
 
 
 def finish(conn: sqlite3.Connection, run_id: int, summary: str) -> Run:
     """End a run with the agent's summary, unless it has missed a waiting claim."""
-    running_run(conn, run_id)
-    missed = missed_claims(conn, run_id)
-    if missed:
-        more = f" and {len(missed) - SHOWN} more" if len(missed) > SHOWN else ""
-        raise HTTPException(
-            409,
-            f"You have missed {', '.join(missed[:SHOWN])}{more}."
-            " Work them, then finish the run again",
-        )
-    end(conn, run_id, "finished", summary)
+    with transaction(conn):
+        running_run(conn, run_id)
+        missed = missed_claims(conn, run_id)
+        if missed:
+            more = f" and {len(missed) - SHOWN} more" if len(missed) > SHOWN else ""
+            raise HTTPException(
+                409,
+                f"You have missed {', '.join(missed[:SHOWN])}{more}."
+                " Work them, then finish the run again",
+            )
+        set_ended(conn, run_id, "finished", summary)
     return get_run(conn, run_id)
 
 
 def close_if_running(conn: sqlite3.Connection, run_id: int, error: str | None) -> None:
     """Fail a run whose agent stopped without finishing it."""
-    if get_run(conn, run_id).state == "running":
-        end(conn, run_id, "failed", error or "The agent stopped without finishing.")
+    with transaction(conn):
+        if get_run(conn, run_id).state == "running":
+            set_ended(
+                conn,
+                run_id,
+                "failed",
+                error or "The agent stopped without finishing.",
+            )
 
 
 def recover(conn: sqlite3.Connection) -> None:

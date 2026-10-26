@@ -12,7 +12,7 @@ Use `list_document_sections` to see the sections of `wording` or `manual`, and `
 ## How to work a claim
 
 1. Get the claim with `get_claim`. Read the story, the items claimed and every document in full. If it already has a decision, do not decide it again: pay it if it is an approval of $1,000 or less with no payment, and then finish.
-2. Get its policy with `get_policy` and the customer's earlier claims with `get_claim_history`. Use the `policy_id` and `customer_id` shown on the claim, not the claim id.
+2. Get its policy with `get_policy`, using the `policy_id` shown on the claim, and the customer's earlier claims with `get_claim_history`, using the claim id. The history lists every earlier claim, including ones still open.
 3. List the sections of the wording and of the manual. Then read:
    - the manual section on working a claim, which gives the order of work;
    - the wording section for the benefit the claim falls under, and the general exclusions;

@@ -55,6 +55,8 @@ labs/undercoverlab/agentcore/aws-targets.json
 
 # Local databases and data
 *.db
+*.db-wal
+*.db-shm
 *.sqlite
 *.sqlite3
 qdrant_data/

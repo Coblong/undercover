@@ -13,6 +13,7 @@ from backend.models import (
     Handler,
     Payment,
     Policy,
+    PreviousClaim,
     SignOff,
     Step,
 )
@@ -84,16 +85,41 @@ def get_policy(conn: sqlite3.Connection, policy_id: str) -> Policy:
     return Policy.model_validate_json(row["data"])
 
 
-def get_claim_history(conn: sqlite3.Connection, customer_id: str) -> ClaimHistory:
-    """Return a customer's earlier claims, without their contact details."""
-    row = conn.execute(
-        "SELECT previous_claims FROM customers WHERE customer_id = ?", (customer_id,)
+OUTCOME = {"approve": "approved", "decline": "declined", "refer": "referred"}
+
+
+def get_claim_history(conn: sqlite3.Connection, claim_id: str) -> ClaimHistory:
+    """Return the customer's claims filed before this one, with their outcomes.
+
+    That is the earlier claims the customer came with, and every claim in this
+    system filed earlier, decided or not.
+    """
+    claim = conn.execute(
+        "SELECT customer_id, submitted_on FROM claims WHERE claim_id = ?", (claim_id,)
     ).fetchone()
-    if row is None:
-        raise not_found("customer", customer_id)
-    return ClaimHistory(
-        customer_id=customer_id, previous_claims=json.loads(row["previous_claims"])
+    if claim is None:
+        raise not_found("claim", claim_id)
+    seeded = conn.execute(
+        "SELECT previous_claims FROM customers WHERE customer_id = ?",
+        (claim["customer_id"],),
+    ).fetchone()
+    earlier = [PreviousClaim.model_validate(p) for p in json.loads(seeded[0])]
+    here = conn.execute(
+        "SELECT c.claim_id, c.submitted_on AS filed_on, c.incident_date,"
+        " c.claim_type, c.summary, d.decision, COALESCE(p.amount, 0) AS amount_paid"
+        " FROM claims c LEFT JOIN decisions d USING (claim_id)"
+        " LEFT JOIN payments p USING (claim_id)"
+        " WHERE c.customer_id = ? AND (c.submitted_on, c.claim_id) < (?, ?)",
+        (claim["customer_id"], claim["submitted_on"], claim_id),
     )
+    earlier += [
+        PreviousClaim.model_validate(
+            {**row, "outcome": OUTCOME.get(row["decision"], "open")}
+        )
+        for row in map(dict, here)
+    ]
+    earlier.sort(key=lambda p: p.filed_on)
+    return ClaimHistory(customer_id=claim["customer_id"], previous_claims=earlier)
 
 
 def list_handlers(conn: sqlite3.Connection) -> list[Handler]:

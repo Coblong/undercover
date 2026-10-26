@@ -47,3 +47,12 @@ def get_section(document: DocumentName, number: int) -> Section:
         if section.number == number:
             return section
     raise queries.not_found(f"section of the {LABELS[document].lower()}", str(number))
+
+
+def is_section(label: str) -> bool:
+    """Say whether a label such as "3. Trip Delay" names a section."""
+    return any(
+        f"{section.number}. {section.title}" == label
+        for document in FILES
+        for section in sections(document)
+    )

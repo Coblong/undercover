@@ -116,9 +116,9 @@ function PolicyPanel({ policyId }: Readonly<{ policyId: string }>) {
   );
 }
 
-function HistoryPanel({ customerId }: Readonly<{ customerId: string }>) {
+function HistoryPanel({ claimId }: Readonly<{ claimId: string }>) {
   const { data: history } = useApi<ClaimHistory>(
-    `/api/customers/${customerId}/claim-history`,
+    `/api/claims/${claimId}/claim-history`,
   );
   if (!history) return <p className="muted">Loading history...</p>;
   if (!history.previous_claims.length) {
@@ -222,7 +222,7 @@ export function ClaimView({
       <h3>Policy</h3>
       <PolicyPanel policyId={claim.policy_id} />
       <h3>Earlier claims</h3>
-      <HistoryPanel customerId={claim.customer_id} />
+      <HistoryPanel claimId={claim.claim_id} />
     </article>
   );
 }

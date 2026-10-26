@@ -5,7 +5,8 @@ from collections.abc import Callable
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import main
+from backend import main, rules
+from backend.db import connect
 from backend.main import app
 
 Runner = Callable[[str, str], str]
@@ -96,11 +97,12 @@ def test_a_large_approval_that_fails_still_waits_for_sign_off(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     def approve_then_crash(claim_id: str, thread_id: str) -> str:
-        decide(client, "approve", 1250)
+        decide(client, "approve", 1100, "CLM-1002")
         raise RuntimeError("model unavailable")
 
-    run_with(monkeypatch, client, approve_then_crash)
-    assert state(client) == "waiting_for_sign_off"
+    monkeypatch.setattr(main, "run_claim_agent", approve_then_crash)
+    client.post("/api/claims/CLM-1002/run")
+    assert state(client, "CLM-1002") == "waiting_for_sign_off"
     assert attempts() == [1]
 
 
@@ -129,6 +131,30 @@ def test_startup_settles_a_claim_left_in_progress(client: TestClient):
         conn.execute(
             "INSERT INTO attempts (claim_id, started_at) VALUES ('CLM-1001', 'then')"
         )
+    with TestClient(app) as restarted:
+        assert state(restarted) == "waiting"
+        assert errors(restarted) == ["The backend stopped during this attempt."]
+    assert attempts() == [1]
+
+
+def test_a_failure_inside_end_attempt_changes_nothing(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    conn = connect()
+    rules.start_attempt(conn, "CLM-1001")
+
+    def fail(conn: sqlite3.Connection, claim_id: str) -> int:
+        raise RuntimeError("database is locked")
+
+    real = rules.failed_attempts
+    monkeypatch.setattr(rules, "failed_attempts", fail)
+    with pytest.raises(RuntimeError):
+        rules.end_attempt(conn, "CLM-1001", "The agent crashed.")
+    conn.close()
+    assert state(client) == "in_progress"
+    assert errors(client) == []
+    assert attempts() == [None]
+    monkeypatch.setattr(rules, "failed_attempts", real)
     with TestClient(app) as restarted:
         assert state(restarted) == "waiting"
         assert errors(restarted) == ["The backend stopped during this attempt."]

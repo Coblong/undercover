@@ -10,8 +10,8 @@ def steps(client: TestClient) -> list[dict[str, str]]:
     return client.get("/api/claims/CLM-1001/steps").json()
 
 
-def state(client: TestClient) -> str:
-    return client.get("/api/claims/CLM-1001").json()["state"]
+def state(client: TestClient, claim_id: str = "CLM-1001") -> str:
+    return client.get(f"/api/claims/{claim_id}").json()["state"]
 
 
 def test_run_starts_the_agent_and_returns_202(
@@ -83,9 +83,9 @@ def test_a_decided_claim_cannot_be_run(client: TestClient):
     assert client.post("/api/claims/CLM-1001/run").status_code == 409
 
 
-def decide(client: TestClient, kind: str, payout: float):
+def decide(client: TestClient, kind: str, payout: float, claim_id: str = "CLM-1001"):
     return client.post(
-        "/api/claims/CLM-1001/decision",
+        f"/api/claims/{claim_id}/decision",
         json={
             "decision": kind,
             "payout": payout,
@@ -128,23 +128,25 @@ def test_large_approval_settles_to_waiting_for_sign_off_at_the_end(
     during: dict[str, Any] = {}
 
     def runner(claim_id: str, thread_id: str) -> str:
-        during["message"] = decide(client, "approve", 1250).json()["message"]
-        during["state"] = state(client)
+        during["message"] = decide(client, "approve", 1250, "CLM-1003").json()[
+            "message"
+        ]
+        during["state"] = state(client, "CLM-1003")
         during["sign_off"] = client.post(
-            "/api/claims/CLM-1001/sign-off", json={"handler_id": "HND-01"}
+            "/api/claims/CLM-1003/sign-off", json={"handler_id": "HND-01"}
         ).status_code
         during["paid"] = client.post(
-            "/api/claims/CLM-1001/payment", json={"amount": 1250}
+            "/api/claims/CLM-1003/payment", json={"amount": 1250}
         ).status_code
         return "done"
 
     monkeypatch.setattr(main, "run_claim_agent", runner)
-    client.post("/api/claims/CLM-1001/run")
+    client.post("/api/claims/CLM-1003/run")
     assert "payment waits until a handler signs off" in during["message"]
     assert during["state"] == "in_progress"
     assert during["sign_off"] == 409
     assert during["paid"] == 409
-    claim = client.get("/api/claims/CLM-1001").json()
+    claim = client.get("/api/claims/CLM-1003").json()
     assert claim["state"] == "waiting_for_sign_off"
     assert claim["payment"] is None
 

@@ -59,9 +59,9 @@ def get_policy(policy_id: str) -> str:
 
 
 @tool
-def get_claim_history(customer_id: str) -> str:
-    """Get a customer's earlier claims."""
-    return call("GET", f"/api/customers/{customer_id}/claim-history")
+def get_claim_history(claim_id: str) -> str:
+    """Get the customer's claims filed before this claim, with their outcomes."""
+    return call("GET", f"/api/claims/{claim_id}/claim-history")
 
 
 @tool

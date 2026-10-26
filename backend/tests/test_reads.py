@@ -28,7 +28,7 @@ def test_get_policy(client: TestClient):
 
 
 def test_claim_history_has_no_contact_details(client: TestClient):
-    history = client.get("/api/customers/CUS-3001/claim-history").json()
+    history = client.get("/api/claims/CLM-1001/claim-history").json()
     assert history["customer_id"] == "CUS-3001"
     assert len(history["previous_claims"]) == 1
     text = str(history)
@@ -88,6 +88,6 @@ def test_unknown_ids_are_404(client: TestClient):
         "/api/claims/CLM-9999",
         "/api/claims/CLM-9999/steps",
         "/api/policies/POL-9999",
-        "/api/customers/CUS-9999/claim-history",
+        "/api/claims/CLM-9999/claim-history",
     ):
         assert client.get(path).status_code == 404

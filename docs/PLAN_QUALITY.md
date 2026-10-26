@@ -33,13 +33,13 @@ Findings A1, A4, A5, C1, C3, F3.
 
 Success criteria:
 
-- [ ] Tests cover every refusal: `NaN`, `Infinity`, negative, zero and above-claimed approval payouts; empty and over-long text; a section that does not exist. Each gives a 422 and leaves the claim unchanged.
-- [ ] A test shows every decision the stub claim agents in `agent/tests` make is still accepted.
-- [ ] A concurrency test runs 8 threads on `pay`, `decide`, `sign_off`, `start_attempt` and `start_run`, 50 times each, and always finds exactly one success, the rest 409, and no 500.
-- [ ] A fault-injection test makes the second write inside `end_attempt` fail. The claim is unchanged, still `in_progress`, and recovery at the next start settles it.
-- [ ] A test shows the database itself refuses a step for a missing claim, a second open attempt on a claim and a second running run, and a connection has foreign keys, WAL and a busy timeout set.
-- [ ] A test shows the second claim of `CUS-3005` lists the first as open, that deciding it changes that history to its outcome and amount paid, and that a claim filed later never appears in an earlier claim's history.
-- [ ] `docs/STATUS.md` says to reseed after this change. `npm run check:python` passes with at least 80% coverage.
+- [x] Tests cover every refusal: `NaN`, `Infinity`, negative, zero and above-claimed approval payouts; empty and over-long text; a section that does not exist. Each gives a 422 and leaves the claim unchanged.
+- [x] A test shows every decision the stub claim agents in `agent/tests` make is still accepted.
+- [x] A concurrency test runs 8 threads on `pay`, `decide`, `sign_off`, `start_attempt` and `start_run`, 50 times each, and always finds exactly one success, the rest 409, and no 500.
+- [x] A fault-injection test makes the second write inside `end_attempt` fail. The claim is unchanged, still `in_progress`, and recovery at the next start settles it.
+- [x] A test shows the database itself refuses a step for a missing claim, a second open attempt on a claim and a second running run, and a connection has foreign keys, WAL and a busy timeout set.
+- [x] A test shows the second claim of `CUS-3005` lists the first as open, that deciding it changes that history to its outcome and amount paid, and that a claim filed later never appears in an earlier claim's history.
+- [x] `docs/STATUS.md` says to reseed after this change. `npm run check:python` passes with at least 80% coverage.
 
 ## Phase 2: The agent's boundaries, settings and logs
 

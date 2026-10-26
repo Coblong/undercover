@@ -27,7 +27,7 @@ def steps(client: TestClient, claim_id: str = "CLM-1001") -> list[dict[str, str]
 def test_read_tools():
     assert "Rome" in main.get_claim.invoke({"claim_id": "CLM-1001"})
     assert '"plan":"premium"' in main.get_policy.invoke({"policy_id": "POL-2001"})
-    history = main.get_claim_history.invoke({"customer_id": "CUS-3001"})
+    history = main.get_claim_history.invoke({"claim_id": "CLM-1001"})
     assert "CLM-0412" in history
     assert "email" not in history
     sections = main.list_document_sections.invoke({"document": "manual"})
@@ -84,18 +84,18 @@ def test_run_declines(client: TestClient):
 
 def test_refused_payment_comes_back_to_the_agent(client: TestClient):
     main.run(
-        "CLM-1001",
+        "CLM-1003",
         "thread-3",
         stub(
-            calls(decision("CLM-1001", "approve", 1250)),
-            calls(("pay_claim", {"claim_id": "CLM-1001", "amount": 1250})),
+            calls(decision("CLM-1003", "approve", 1250)),
+            calls(("pay_claim", {"claim_id": "CLM-1003", "amount": 1250})),
             AIMessage(content="Approved $1,250.00. Payment waits for sign-off."),
         ),
     )
-    done = claim(client)
+    done = claim(client, "CLM-1003")
     assert done["state"] == "waiting_for_sign_off"
     assert done["payment"] is None
-    assert "Error 409: Payment blocked" in steps(client)[-2]["text"]
+    assert "Error 409: Payment blocked" in steps(client, "CLM-1003")[-2]["text"]
 
 
 def test_instructions_come_from_the_backend(

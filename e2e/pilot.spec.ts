@@ -23,7 +23,7 @@ test("a large payout is blocked until a handler signs off", async ({
   page,
   request,
 }) => {
-  const approved = await request.post("/api/claims/CLM-1002/decision", {
+  const approved = await request.post("/api/claims/CLM-1008/decision", {
     data: decision(
       "approve",
       1250,
@@ -34,12 +34,12 @@ test("a large payout is blocked until a handler signs off", async ({
   expect(outcome.state).toBe("waiting_for_sign_off");
 
   await page.goto("/");
-  await page.getByRole("button", { name: /CLM-1002/ }).click();
-  const claim = page.getByRole("article", { name: "Claim CLM-1002" });
+  await page.getByRole("button", { name: /CLM-1008/ }).click();
+  const claim = page.getByRole("article", { name: "Claim CLM-1008" });
   await expect(claim.getByText("Waiting for sign-off").first()).toBeVisible();
   await expect(claim.getByRole("button", { name: "Run agent" })).toHaveCount(0);
 
-  const blocked = await request.post("/api/claims/CLM-1002/payment", {
+  const blocked = await request.post("/api/claims/CLM-1008/payment", {
     data: { amount: 1250 },
   });
   expect(blocked.status()).toBe(409);
@@ -53,7 +53,7 @@ test("a large payout is blocked until a handler signs off", async ({
   await expect(claim.getByText("Signed off by Dana Whitfield")).toBeVisible();
   await expect(claim.getByText(/^Paid/)).toContainText("$1,250.00");
   await expect(claim.getByRole("form", { name: "Sign-off" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /CLM-1002/ })).toContainText(
+  await expect(page.getByRole("button", { name: /CLM-1008/ })).toContainText(
     "Decided",
   );
 });

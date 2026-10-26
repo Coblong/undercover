@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Annotated, Literal
 from uuid import uuid4
 
-from fastapi import BackgroundTasks, Depends, FastAPI
+from fastapi import BackgroundTasks, Depends, FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from agent.main import run as run_claim_agent
 from agent.queue import run_queue as run_queue_agent
@@ -55,6 +57,27 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="UnderCover", lifespan=lifespan)
 
 
+@app.exception_handler(RequestValidationError)
+def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:
+    """Say what is wrong with a request, without echoing the input back.
+
+    The default answer repeats the input, which is not valid JSON when it is NaN.
+    """
+    detail = [
+        {"loc": error["loc"], "msg": error["msg"], "type": error["type"]}
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": detail})
+
+
+@app.exception_handler(sqlite3.IntegrityError)
+def conflict(_: Request, exc: sqlite3.IntegrityError) -> JSONResponse:
+    """Report a change the database refused as a conflict, not a crash."""
+    return JSONResponse(
+        status_code=409, content={"detail": "That conflicts with a change already made"}
+    )
+
+
 @app.get("/api/health", operation_id="health")
 def health() -> dict[str, str]:
     """Check that the backend is running."""
@@ -79,10 +102,10 @@ def get_policy(policy_id: str, conn: Db) -> Policy:
     return queries.get_policy(conn, policy_id)
 
 
-@app.get("/api/customers/{customer_id}/claim-history", operation_id="get_claim_history")
-def get_claim_history(customer_id: str, conn: Db) -> ClaimHistory:
-    """Get a customer's earlier claims."""
-    return queries.get_claim_history(conn, customer_id)
+@app.get("/api/claims/{claim_id}/claim-history", operation_id="get_claim_history")
+def get_claim_history(claim_id: str, conn: Db) -> ClaimHistory:
+    """Get the customer's claims filed before this claim, with their outcomes."""
+    return queries.get_claim_history(conn, claim_id)
 
 
 @app.get("/api/documents/{document}/sections", operation_id="list_document_sections")
@@ -194,7 +217,6 @@ def write_todos(run_id: int, body: TodosRequest, conn: Db) -> Run:
 @app.post("/api/runs/{run_id}/claims/{claim_id}/work", operation_id="work_claim")
 def work_claim(run_id: int, claim_id: str, conn: Db) -> Outcome:
     """Work one claim in a run with a fresh claim agent and report the result."""
-    runs.check_can_start(conn, run_id, claim_id)
     rules.start_attempt(conn, claim_id, run_id)
     state = execute_attempt(claim_id)
     return Outcome(

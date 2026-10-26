@@ -1,8 +1,18 @@
 """Request and response models for the API."""
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+Reason = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)
+]
+SectionLabel = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=100)
+]
+Label = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)
+]
 
 State = Literal[
     "waiting", "in_progress", "waiting_for_sign_off", "decided", "left_for_handler"
@@ -132,13 +142,13 @@ class Outcome(BaseModel):
 
 class DecisionRequest(BaseModel):
     decision: Literal["approve", "decline", "refer"]
-    payout: float
-    explanation: str
-    policy_section: str
+    payout: float = Field(allow_inf_nan=False)
+    explanation: Reason
+    policy_section: SectionLabel
 
 
 class PaymentRequest(BaseModel):
-    amount: float
+    amount: float = Field(allow_inf_nan=False)
 
 
 class SignOffRequest(BaseModel):
@@ -147,14 +157,14 @@ class SignOffRequest(BaseModel):
 
 class StepRequest(BaseModel):
     kind: Literal["tool_call", "tool_result", "message", "read", "error"]
-    text: str
+    text: str = Field(max_length=20000)
 
 
 TodoStatus = Literal["to_do", "in_progress", "done", "left_for_handler"]
 
 
 class Todo(BaseModel):
-    text: str
+    text: Label
     status: TodoStatus
 
 
@@ -173,8 +183,8 @@ class StartRunRequest(BaseModel):
 
 
 class TodosRequest(BaseModel):
-    todos: list[Todo]
+    todos: list[Todo] = Field(max_length=100)
 
 
 class FinishRunRequest(BaseModel):
-    summary: str
+    summary: str = Field(max_length=4000)

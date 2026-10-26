@@ -105,7 +105,7 @@ export const history: ClaimHistory = {
 
 export const claimRoutes = {
   "/api/policies/POL-2001": policy,
-  "/api/customers/CUS-3001/claim-history": history,
+  "/api/claims/CLM-1001/claim-history": history,
 };
 
 /**

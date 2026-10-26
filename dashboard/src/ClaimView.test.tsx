@@ -62,7 +62,7 @@ it("says so when there are no earlier claims", async () => {
   stubApi({
     "/api/claims/CLM-1001": claim,
     "/api/policies/POL-2001": claimRoutes["/api/policies/POL-2001"],
-    "/api/customers/CUS-3001/claim-history": {
+    "/api/claims/CLM-1001/claim-history": {
       customer_id: "CUS-3001",
       previous_claims: [],
     },

@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 from collections.abc import Iterator
-from contextlib import closing
+from contextlib import closing, contextmanager
 from datetime import UTC, datetime
 from functools import cache
 from pathlib import Path
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS handlers (
     can_approve_over_limit INTEGER NOT NULL
 );
 CREATE TABLE IF NOT EXISTS decisions (
-    claim_id TEXT PRIMARY KEY,
+    claim_id TEXT PRIMARY KEY REFERENCES claims,
     decision TEXT NOT NULL,
     payout REAL NOT NULL,
     explanation TEXT NOT NULL,
@@ -53,19 +53,19 @@ CREATE TABLE IF NOT EXISTS decisions (
     decided_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS payments (
-    claim_id TEXT PRIMARY KEY,
+    claim_id TEXT PRIMARY KEY REFERENCES claims,
     amount REAL NOT NULL,
     paid_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS sign_offs (
-    claim_id TEXT PRIMARY KEY,
-    handler_id TEXT NOT NULL,
+    claim_id TEXT PRIMARY KEY REFERENCES claims,
+    handler_id TEXT NOT NULL REFERENCES handlers,
     signed_off_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS attempts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT NOT NULL,
-    run_id INTEGER,
+    claim_id TEXT NOT NULL REFERENCES claims,
+    run_id INTEGER REFERENCES runs,
     started_at TEXT NOT NULL,
     failed INTEGER
 );
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS runs (
     ended_at TEXT
 );
 CREATE TABLE IF NOT EXISTS todos (
-    run_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL REFERENCES runs,
     position INTEGER NOT NULL,
     text TEXT NOT NULL,
     status TEXT NOT NULL,
@@ -86,11 +86,18 @@ CREATE TABLE IF NOT EXISTS todos (
 );
 CREATE TABLE IF NOT EXISTS steps (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    claim_id TEXT NOT NULL,
+    claim_id TEXT NOT NULL REFERENCES claims,
     kind TEXT NOT NULL,
     text TEXT NOT NULL,
     created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS steps_by_claim ON steps (claim_id);
+CREATE INDEX IF NOT EXISTS attempts_by_claim ON attempts (claim_id);
+CREATE INDEX IF NOT EXISTS attempts_by_run ON attempts (run_id);
+CREATE UNIQUE INDEX IF NOT EXISTS one_open_attempt ON attempts (claim_id)
+    WHERE failed IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS one_running_run ON runs (state)
+    WHERE state = 'running';
 """
 
 
@@ -113,10 +120,30 @@ def payout_limit() -> float:
 def connect() -> sqlite3.Connection:
     """Open a connection to the database named by UNDERCOVER_DB."""
     conn = sqlite3.connect(
-        os.getenv("UNDERCOVER_DB", DEFAULT_DB), timeout=10, check_same_thread=False
+        os.getenv("UNDERCOVER_DB", DEFAULT_DB),
+        timeout=10,
+        check_same_thread=False,
+        isolation_level=None,
     )
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
+
+
+@contextmanager
+def transaction(conn: sqlite3.Connection) -> Iterator[None]:
+    """Run a block as one transaction that takes the write lock before it reads.
+
+    Two requests that check and then write cannot both pass the check.
+    """
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        yield
+    except BaseException:
+        conn.execute("ROLLBACK")
+        raise
+    conn.execute("COMMIT")
 
 
 def get_db() -> Iterator[sqlite3.Connection]:
@@ -127,10 +154,11 @@ def get_db() -> Iterator[sqlite3.Connection]:
 
 def init_db() -> None:
     """Create the tables and, when the database is empty, load the data."""
-    with closing(connect()) as conn, conn:
+    with closing(connect()) as conn:
         conn.executescript(SCHEMA)
-        if conn.execute("SELECT 1 FROM claims").fetchone() is None:
-            seed(conn)
+        with transaction(conn):
+            if conn.execute("SELECT 1 FROM claims").fetchone() is None:
+                seed(conn)
 
 
 def seed(conn: sqlite3.Connection) -> None:

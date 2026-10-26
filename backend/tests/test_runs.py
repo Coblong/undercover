@@ -106,7 +106,7 @@ def test_the_result_is_one_line_from_the_database(
             decide(client, claim_id, "approve", 420)
             client.post(f"/api/claims/{claim_id}/payment", json={"amount": 420})
         elif claim_id == "CLM-1002":
-            decide(client, claim_id, "approve", 1250)
+            decide(client, claim_id, "approve", 1100)
         else:
             decide(client, claim_id, "refer", 0)
         return "I did something else entirely."
@@ -116,7 +116,7 @@ def test_the_result_is_one_line_from_the_database(
     lines = [work(client, run_id, f"CLM-100{n}").json()["message"] for n in (1, 2, 3)]
     assert lines == [
         "CLM-1001 decided: approve $420.00, paid.",
-        "CLM-1002 decided: approve $1,250.00, waiting for a handler's sign-off.",
+        "CLM-1002 decided: approve $1,100.00, waiting for a handler's sign-off.",
         "CLM-1003 decided: refer.",
     ]
 
