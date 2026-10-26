@@ -40,6 +40,8 @@ On 26 October 2026, after reseeding, `uv run -m agent --limit 5` ran on the defa
 
 The results were not compared with `data/evals/`.
 
+After the quality build (`docs/PLAN_QUALITY.md`) the same run, reseeded and capped at five, finished with no failed attempt and no call refused by the new checks: CLM-1003 (approved $3,750.00, held for sign-off), CLM-1004 (approved $186.00, paid), CLM-1013 (declined) and CLM-1023 and CLM-1025 (referred). Before the instructions told the model to give the policy section as a bare number and title, three of five first decisions were refused (a note had been added to the section name); the agent corrected each one itself.
+
 ## Open items
 
 - Payouts may vary between runs of the same claim, because the model does the arithmetic. Scoring the agent against `data/evals/` and any fix for the arithmetic are for a later build.
