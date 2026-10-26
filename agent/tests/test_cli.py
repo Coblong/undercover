@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 
 from agent import __main__ as cli
 from agent import main
-from backend import main as backend_main
 from backend import runs
 from backend.db import connect
+from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")
 
@@ -35,11 +35,9 @@ def queue_agent_that_works_in_order(run_id: int) -> None:
 
 
 @pytest.fixture(autouse=True)
-def stand_ins(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(backend_main, "run_claim_agent", decide_on_the_spot)
-    monkeypatch.setattr(
-        backend_main, "run_queue_agent", queue_agent_that_works_in_order
-    )
+def stand_ins(agents: Agents) -> None:
+    agents.claim(decide_on_the_spot)
+    agents.queue(queue_agent_that_works_in_order)
 
 
 def run_cli(monkeypatch: pytest.MonkeyPatch, *args: str) -> None:
@@ -104,9 +102,11 @@ def test_a_run_that_cannot_start_is_reported(
 
 
 def test_a_run_that_decides_nothing_is_reported(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    agents: Agents,
 ):
-    monkeypatch.setattr(backend_main, "run_claim_agent", lambda claim_id, thread_id: "")
+    agents.claim(lambda claim_id, thread_id: "")
     run_cli(monkeypatch, "CLM-1001")
     assert capsys.readouterr().out == "CLM-1001: waiting, no decision\n"
 

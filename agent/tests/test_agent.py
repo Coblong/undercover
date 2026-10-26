@@ -11,7 +11,7 @@ from langchain_core.messages import AIMessage
 
 from agent import main
 from agent.tests.stubs import StubModel, calls, decision, stub
-from backend import main as backend_main
+from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")
 
@@ -240,15 +240,11 @@ def test_a_tool_that_fails_comes_back_to_the_model_as_text(
 
 
 def test_a_claim_that_loops_is_stopped_and_goes_back_to_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, agents: Agents
 ):
     monkeypatch.setattr(main, "CALL_LIMIT", 3)
     looping = StubModel(messages=itertools.repeat(calls(("get_claim", {}))))
-    monkeypatch.setattr(
-        backend_main,
-        "run_claim_agent",
-        lambda claim_id, thread_id: main.run(claim_id, thread_id, looping),
-    )
+    agents.claim(lambda claim_id, thread_id: main.run(claim_id, thread_id, looping))
     assert client.post("/api/claims/CLM-1001/run").status_code == 202
     assert claim(client)["state"] == "waiting"
     assert steps(client)[-1]["kind"] == "error"

@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import rules, runs
+from backend import attempts, decisions, runs
 from backend.db import connect, init_db
 
 
@@ -42,7 +42,7 @@ def test_the_database_refuses_what_makes_no_sense(client: TestClient):
                 "INSERT INTO steps (claim_id, kind, text, created_at)"
                 " VALUES ('CLM-9999', 'message', 'x', 'now')"
             )
-        rules.start_attempt(conn, "CLM-1001")
+        attempts.start_attempt(conn, "CLM-1001")
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO attempts (claim_id, started_at) VALUES ('CLM-1001', 'now')"
@@ -63,7 +63,7 @@ def test_a_change_the_database_refuses_is_a_conflict_not_a_crash(
     def refuse(conn: sqlite3.Connection, claim_id: str, body: object) -> None:
         raise sqlite3.IntegrityError("UNIQUE constraint failed")
 
-    monkeypatch.setattr(rules, "pay", refuse)
+    monkeypatch.setattr(decisions, "pay", refuse)
     response = client.post("/api/claims/CLM-1001/payment", json={"amount": 420})
     assert response.status_code == 409
     assert response.json() == {"detail": "That conflicts with a change already made"}

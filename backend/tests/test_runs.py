@@ -5,9 +5,10 @@ from contextlib import closing
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import main, runs
+from backend import runs
 from backend.db import connect
 from backend.main import app
+from conftest import Agents
 
 
 def new_run(limit: int) -> int:
@@ -40,23 +41,21 @@ def decide(client: TestClient, claim_id: str, kind: str, payout: float):
 
 
 @pytest.fixture
-def declining(monkeypatch: pytest.MonkeyPatch, client: TestClient) -> None:
+def declining(client: TestClient, agents: Agents) -> None:
     def runner(claim_id: str, thread_id: str) -> str:
         decide(client, claim_id, "decline", 0)
         return "done"
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
 
 
 def states(client: TestClient) -> list[str]:
     return [c["state"] for c in client.get("/api/claims").json()]
 
 
-def test_start_a_run_that_the_agent_never_finishes(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_start_a_run_that_the_agent_never_finishes(client: TestClient, agents: Agents):
     seen: list[int] = []
-    monkeypatch.setattr(main, "run_queue_agent", seen.append)
+    agents.queue(seen.append)
     response = client.post("/api/runs", json={"limit": 5})
     assert response.status_code == 202
     assert response.json()["limit"] == 5
@@ -65,13 +64,11 @@ def test_start_a_run_that_the_agent_never_finishes(
     assert latest(client)["summary"] == "The agent stopped without finishing."
 
 
-def test_a_queue_agent_that_crashes_fails_the_run(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_a_queue_agent_that_crashes_fails_the_run(client: TestClient, agents: Agents):
     def crash(run_id: int) -> None:
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(main, "run_queue_agent", crash)
+    agents.queue(crash)
     client.post("/api/runs", json={"limit": 5})
     assert latest(client)["summary"] == (
         "The queue agent stopped with an error (RuntimeError)"
@@ -98,9 +95,7 @@ def test_the_limit_stops_a_run_starting_more_claims(
     assert states(client).count("waiting") == 23
 
 
-def test_the_result_is_one_line_from_the_database(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_the_result_is_one_line_from_the_database(client: TestClient, agents: Agents):
     def runner(claim_id: str, thread_id: str) -> str:
         if claim_id == "CLM-1001":
             decide(client, claim_id, "approve", 420)
@@ -111,9 +106,9 @@ def test_the_result_is_one_line_from_the_database(
             decide(client, claim_id, "refer", 0)
         return "I did something else entirely."
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     run_id = new_run(5)
-    lines = [work(client, run_id, f"CLM-100{n}").json()["message"] for n in (1, 2, 3)]
+    lines = [work(client, run_id, f"CLM-100{n}").json()["line"] for n in (1, 2, 3)]
     assert lines == [
         "CLM-1001 decided: approve $420.00, paid.",
         "CLM-1002 decided: approve $1,100.00, waiting for a handler's sign-off.",
@@ -122,7 +117,7 @@ def test_the_result_is_one_line_from_the_database(
 
 
 def test_a_failed_claim_does_not_stop_the_run_and_is_retried_within_the_limit(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     calls: list[str] = []
 
@@ -133,28 +128,28 @@ def test_a_failed_claim_does_not_stop_the_run_and_is_retried_within_the_limit(
         decide(client, claim_id, "decline", 0)
         return "done"
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     run_id = new_run(1)
     failed = work(client, run_id, "CLM-1001").json()
     assert failed["state"] == "waiting"
-    assert failed["message"] == (
+    assert failed["line"] == (
         "CLM-1001 failed (The agent stopped with an error (RuntimeError))"
         " and is waiting to be tried again."
     )
     retried = work(client, run_id, "CLM-1001").json()
-    assert retried["message"] == "CLM-1001 decided: decline."
+    assert retried["line"] == "CLM-1001 decided: decline."
     assert work(client, run_id, "CLM-1002").status_code == 409
 
 
 def test_a_claim_that_fails_twice_is_reported_as_left_for_a_handler(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    monkeypatch.setattr(main, "run_claim_agent", lambda claim_id, thread_id: "done")
+    agents.claim(lambda claim_id, thread_id: "done")
     run_id = new_run(5)
     work(client, run_id, "CLM-1001")
     left = work(client, run_id, "CLM-1001").json()
     assert left["state"] == "left_for_handler"
-    assert left["message"] == "CLM-1001 failed twice and is left for a handler."
+    assert left["line"] == "CLM-1001 failed twice and is left for a handler."
 
 
 def test_finish_is_refused_while_a_claim_could_still_be_started(
@@ -176,9 +171,9 @@ def test_finish_is_refused_while_a_claim_could_still_be_started(
 
 
 def test_finish_is_refused_while_a_claim_waits_for_a_retry(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    monkeypatch.setattr(main, "run_claim_agent", lambda claim_id, thread_id: "done")
+    agents.claim(lambda claim_id, thread_id: "done")
     run_id = new_run(1)
     work(client, run_id, "CLM-1001")
     refused = finish(client, run_id)

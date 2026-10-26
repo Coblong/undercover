@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent.settings import AgentError
-from backend import main
+from conftest import Agents
 
 
 def crash_with(exc: Exception):
@@ -16,15 +16,13 @@ def crash_with(exc: Exception):
 
 
 def test_a_crash_is_logged_in_full_and_shown_without_details(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+    client: TestClient, caplog: pytest.LogCaptureFixture, agents: Agents
 ):
     secret = RuntimeError(
         "cannot open /Users/someone/app.py via https://provider.example/key"
     )
-    monkeypatch.setattr(main, "run_claim_agent", crash_with(secret))
-    with caplog.at_level(logging.INFO, logger="backend.main"):
+    agents.claim(crash_with(secret))
+    with caplog.at_level(logging.INFO, logger="backend.work"):
         client.post("/api/claims/CLM-1001/run")
 
     failure = next(r for r in caplog.records if r.levelno == logging.ERROR)
@@ -39,9 +37,9 @@ def test_a_crash_is_logged_in_full_and_shown_without_details(
 
 
 def test_a_message_the_agent_wrote_for_the_team_is_shown(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    monkeypatch.setattr(main, "run_claim_agent", crash_with(AgentError("no key set")))
+    agents.claim(crash_with(AgentError("no key set")))
     client.post("/api/claims/CLM-1001/run")
     assert client.get("/api/claims/CLM-1001/steps").json()[0]["text"] == (
         "The agent stopped with an error: no key set"
@@ -49,12 +47,10 @@ def test_a_message_the_agent_wrote_for_the_team_is_shown(
 
 
 def test_every_ended_attempt_logs_one_line_with_its_fields(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+    client: TestClient, caplog: pytest.LogCaptureFixture, agents: Agents
 ):
-    monkeypatch.setattr(main, "run_claim_agent", crash_with(RuntimeError("x")))
-    with caplog.at_level(logging.INFO, logger="backend.main"):
+    agents.claim(crash_with(RuntimeError("x")))
+    with caplog.at_level(logging.INFO, logger="backend.work"):
         client.post("/api/claims/CLM-1001/run")
         client.post("/api/claims/CLM-1002/run")
     lines = [
@@ -67,13 +63,11 @@ def test_every_ended_attempt_logs_one_line_with_its_fields(
 
 
 def test_a_queue_agent_crash_is_logged(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
+    client: TestClient, caplog: pytest.LogCaptureFixture, agents: Agents
 ):
     def crash(run_id: int) -> None:
         raise RuntimeError("x")
 
-    monkeypatch.setattr(main, "run_queue_agent", crash)
+    agents.queue(crash)
     client.post("/api/runs", json={"limit": 1})
     assert any("queue agent failed in run 1" in r.getMessage() for r in caplog.records)

@@ -14,6 +14,9 @@ Label = Annotated[
     str, StringConstraints(strip_whitespace=True, min_length=1, max_length=300)
 ]
 
+StepKind = Literal["tool_call", "tool_result", "message", "read", "error"]
+DocumentName = Literal["wording", "manual"]
+
 State = Literal[
     "waiting", "in_progress", "waiting_for_sign_off", "decided", "left_for_handler"
 ]
@@ -123,15 +126,21 @@ class SectionRef(BaseModel):
 
 
 class Section(SectionRef):
-    document: Literal["wording", "manual"]
+    document: DocumentName
     text: str
 
 
 class Step(BaseModel):
     id: int
-    kind: Literal["tool_call", "tool_result", "message", "read", "error"]
+    kind: StepKind
     text: str
     created_at: str
+
+
+class WorkResult(BaseModel):
+    claim_id: str
+    state: State
+    line: str
 
 
 class Outcome(BaseModel):
@@ -156,7 +165,7 @@ class SignOffRequest(BaseModel):
 
 
 class StepRequest(BaseModel):
-    kind: Literal["tool_call", "tool_result", "message", "read", "error"]
+    kind: StepKind
     text: str = Field(max_length=20000)
 
 

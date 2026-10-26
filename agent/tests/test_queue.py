@@ -11,9 +11,9 @@ from pydantic import Field
 
 from agent import main, queue
 from agent.tests.stubs import StubModel, calls, decision, stub
-from backend import main as backend_main
 from backend import runs
 from backend.db import connect
+from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")
 
@@ -60,9 +60,7 @@ def declines(claim_id: str) -> list[AIMessage]:
     ]
 
 
-def claim_agents(
-    monkeypatch: pytest.MonkeyPatch, crashing: dict[str, int] | None = None
-) -> None:
+def claim_agents(agents: Agents, crashing: dict[str, int] | None = None) -> None:
     """Give every claim a stub agent that declines, or crashes some times first."""
     crashes = dict(crashing or {})
 
@@ -72,7 +70,7 @@ def claim_agents(
             raise RuntimeError("model unavailable")
         return main.run(claim_id, thread_id, stub(*declines(claim_id)))
 
-    monkeypatch.setattr(backend_main, "run_claim_agent", agent)
+    agents.claim(agent)
 
 
 def get(client: TestClient, path: str) -> Any:
@@ -106,9 +104,9 @@ def todo_writes(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
 
 
 def test_a_run_plans_works_in_its_own_order_and_finishes(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, todo_writes: list[Any]
+    client: TestClient, todo_writes: list[Any], agents: Agents
 ):
-    claim_agents(monkeypatch)
+    claim_agents(agents)
     run_id = new_run(3)
     model = recording(
         calls(("list_waiting_claims", {})),
@@ -165,10 +163,8 @@ def test_a_run_plans_works_in_its_own_order_and_finishes(
     assert story[:40] not in " ".join(model.seen)
 
 
-def test_the_limit_leaves_the_rest_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
-    claim_agents(monkeypatch)
+def test_the_limit_leaves_the_rest_waiting(client: TestClient, agents: Agents):
+    claim_agents(agents)
     model = recording(
         calls(todo(("CLM-1001", "in_progress"), ("CLM-1002", "to_do"))),
         work("CLM-1001"),
@@ -184,9 +180,9 @@ def test_the_limit_leaves_the_rest_waiting(
 
 
 def test_a_failed_claim_does_not_stop_the_run_and_is_left_after_two_failures(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, todo_writes: list[Any]
+    client: TestClient, todo_writes: list[Any], agents: Agents
 ):
-    claim_agents(monkeypatch, {"CLM-1002": 2})
+    claim_agents(agents, {"CLM-1002": 2})
     model = recording(
         work("CLM-1001"),
         work("CLM-1002"),
@@ -214,9 +210,9 @@ def test_a_failed_claim_does_not_stop_the_run_and_is_left_after_two_failures(
 
 
 def test_finishing_early_is_refused_until_the_missed_claim_is_worked(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    claim_agents(monkeypatch)
+    claim_agents(agents)
     model = recording(
         work("CLM-1001"),
         finish("All done."),
@@ -231,10 +227,8 @@ def test_finishing_early_is_refused_until_the_missed_claim_is_worked(
     assert started_in_order() == ["CLM-1001", "CLM-1002"]
 
 
-def test_an_agent_that_stops_is_reminded_to_finish(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
-    claim_agents(monkeypatch)
+def test_an_agent_that_stops_is_reminded_to_finish(client: TestClient, agents: Agents):
+    claim_agents(agents)
     model = recording(
         work("CLM-1001"),
         AIMessage(content="I am done."),
@@ -246,13 +240,9 @@ def test_an_agent_that_stops_is_reminded_to_finish(
     assert get(client, "/api/runs/latest")["state"] == "finished"
 
 
-def test_an_agent_that_never_finishes_fails_the_run(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_an_agent_that_never_finishes_fails_the_run(client: TestClient, agents: Agents):
     model = stub(*[AIMessage(content="I am done.")] * 3)
-    monkeypatch.setattr(
-        backend_main, "run_queue_agent", lambda run_id: queue.run_queue(run_id, model)
-    )
+    agents.queue(lambda run_id: queue.run_queue(run_id, model))
     assert client.post("/api/runs", json={"limit": 1}).status_code == 202
     run = get(client, "/api/runs/latest")
     assert run["state"] == "failed"

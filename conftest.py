@@ -5,6 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent import main
+from backend import work
 from backend.main import app
 
 
@@ -30,3 +31,20 @@ class InProcessClient(TestClient):
 def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the agent reach the backend in this process, without a server."""
     monkeypatch.setattr(main, "backend", lambda timeout=30: InProcessClient(app))
+
+
+class Agents:
+    """Replaces the agents the backend runs with ones that need no model."""
+
+    def claim(self, runner: work.ClaimAgent) -> None:
+        app.dependency_overrides[work.claim_agent] = lambda: runner
+
+    def queue(self, runner: work.QueueAgent) -> None:
+        app.dependency_overrides[work.queue_agent] = lambda: runner
+
+
+@pytest.fixture
+def agents() -> Iterator[Agents]:
+    """Let a test choose what the claim agent and the queue agent do."""
+    yield Agents()
+    app.dependency_overrides.clear()

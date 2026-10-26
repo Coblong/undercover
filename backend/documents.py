@@ -1,13 +1,10 @@
 """The policy wording and the claims manual, served by section."""
 
 import re
-from typing import Literal
 
 from backend import queries
 from backend.db import DATA
-from backend.models import Section, SectionRef
-
-DocumentName = Literal["wording", "manual"]
+from backend.models import DocumentName, Section, SectionRef
 
 FILES: dict[DocumentName, str] = {
     "wording": "policy_wording.md",

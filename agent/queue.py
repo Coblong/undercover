@@ -49,7 +49,7 @@ def queue_tools(run_id: int) -> list[BaseTool]:
         """Hand a claim to a fresh helper to work, and get one line back."""
         path = f"/api/runs/{run_id}/claims/{claim_id}/work"
         answer = main.call("POST", path, timeout=WORK_TIMEOUT)
-        return answer if answer.startswith("Error") else json.loads(answer)["message"]
+        return answer if answer.startswith("Error") else json.loads(answer)["line"]
 
     @tool
     def finish_run(summary: str) -> str:

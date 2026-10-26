@@ -1,9 +1,8 @@
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
-from backend import main
+from conftest import Agents
 
 
 def steps(client: TestClient) -> list[dict[str, str]]:
@@ -14,9 +13,7 @@ def state(client: TestClient, claim_id: str = "CLM-1001") -> str:
     return client.get(f"/api/claims/{claim_id}").json()["state"]
 
 
-def test_run_starts_the_agent_and_returns_202(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_run_starts_the_agent_and_returns_202(client: TestClient, agents: Agents):
     seen: dict[str, str] = {}
 
     def runner(claim_id: str, thread_id: str) -> str:
@@ -35,7 +32,7 @@ def test_run_starts_the_agent_and_returns_202(
         )
         return "done"
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     response = client.post("/api/claims/CLM-1001/run")
     assert response.status_code == 202
     assert response.json()["state"] == "in_progress"
@@ -47,13 +44,11 @@ def test_run_starts_the_agent_and_returns_202(
     assert steps(client) == []
 
 
-def test_run_that_crashes_leaves_the_claim_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_run_that_crashes_leaves_the_claim_waiting(client: TestClient, agents: Agents):
     def runner(claim_id: str, thread_id: str) -> str:
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     assert client.post("/api/claims/CLM-1001/run").status_code == 202
     assert state(client) == "waiting"
     assert [(s["kind"], s["text"]) for s in steps(client)] == [
@@ -62,9 +57,9 @@ def test_run_that_crashes_leaves_the_claim_waiting(
 
 
 def test_run_that_decides_nothing_goes_back_to_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    monkeypatch.setattr(main, "run_claim_agent", lambda claim_id, thread_id: "done")
+    agents.claim(lambda claim_id, thread_id: "done")
     client.post("/api/claims/CLM-1001/run")
     assert state(client) == "waiting"
     assert steps(client)[0]["text"] == "The agent finished without deciding the claim."
@@ -95,9 +90,7 @@ def decide(client: TestClient, kind: str, payout: float, claim_id: str = "CLM-10
     )
 
 
-def test_claim_stays_in_progress_until_the_run_ends(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
+def test_claim_stays_in_progress_until_the_run_ends(client: TestClient, agents: Agents):
     during: dict[str, Any] = {}
 
     def runner(claim_id: str, thread_id: str) -> str:
@@ -109,7 +102,7 @@ def test_claim_stays_in_progress_until_the_run_ends(
         )
         return "done"
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     client.post("/api/claims/CLM-1001/run")
     assert during["decided"]["state"] == "in_progress"
     assert "Now pay $420.00" in during["decided"]["message"]
@@ -123,7 +116,7 @@ def test_claim_stays_in_progress_until_the_run_ends(
 
 
 def test_large_approval_settles_to_waiting_for_sign_off_at_the_end(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     during: dict[str, Any] = {}
 
@@ -140,7 +133,7 @@ def test_large_approval_settles_to_waiting_for_sign_off_at_the_end(
         ).status_code
         return "done"
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     client.post("/api/claims/CLM-1003/run")
     assert "payment waits until a handler signs off" in during["message"]
     assert during["state"] == "in_progress"
@@ -152,13 +145,13 @@ def test_large_approval_settles_to_waiting_for_sign_off_at_the_end(
 
 
 def test_crash_after_a_decision_still_settles_the_claim(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     def runner(claim_id: str, thread_id: str) -> str:
         decide(client, "decline", 0)
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+    agents.claim(runner)
     client.post("/api/claims/CLM-1001/run")
     assert state(client) == "decided"
     assert [s["kind"] for s in steps(client)] == ["error"]

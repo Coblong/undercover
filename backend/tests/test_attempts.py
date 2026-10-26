@@ -5,9 +5,10 @@ from collections.abc import Callable
 import pytest
 from fastapi.testclient import TestClient
 
-from backend import main, rules
+from backend import attempts as attempt_rules
 from backend.db import connect
 from backend.main import app
+from conftest import Agents
 
 Runner = Callable[[str, str], str]
 
@@ -47,31 +48,31 @@ def crash(claim_id: str, thread_id: str) -> str:
     raise RuntimeError("model unavailable")
 
 
-def run_with(monkeypatch: pytest.MonkeyPatch, client: TestClient, runner: Runner):
-    monkeypatch.setattr(main, "run_claim_agent", runner)
+def run_with(agents: Agents, client: TestClient, runner: Runner):
+    agents.claim(runner)
     return client.post("/api/claims/CLM-1001/run")
 
 
 def test_a_crash_with_no_decision_goes_back_to_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    run_with(monkeypatch, client, crash)
+    run_with(agents, client, crash)
     assert state(client) == "waiting"
     assert attempts() == [1]
 
 
 def test_a_second_failed_attempt_leaves_the_claim_for_a_handler(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
-    run_with(monkeypatch, client, crash)
-    run_with(monkeypatch, client, lambda claim_id, thread_id: "done")
+    run_with(agents, client, crash)
+    run_with(agents, client, lambda claim_id, thread_id: "done")
     assert state(client) == "left_for_handler"
     assert attempts() == [1, 1]
     assert errors(client)[-1] == "The claim failed twice, so it is left for a handler."
 
 
 def test_an_approval_that_was_not_paid_is_retried_and_paid_once(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     def approve_only(claim_id: str, thread_id: str) -> str:
         decide(client, "approve", 420)
@@ -83,10 +84,10 @@ def test_an_approval_that_was_not_paid_is_retried_and_paid_once(
         assert pay(client, 420).status_code == 409
         return "done"
 
-    run_with(monkeypatch, client, approve_only)
+    run_with(agents, client, approve_only)
     assert state(client) == "waiting"
     assert errors(client) == ["The agent approved the claim but did not pay it."]
-    run_with(monkeypatch, client, pay_only)
+    run_with(agents, client, pay_only)
     claim = client.get("/api/claims/CLM-1001").json()
     assert claim["state"] == "decided"
     assert claim["payment"]["amount"] == 420.0
@@ -94,27 +95,27 @@ def test_an_approval_that_was_not_paid_is_retried_and_paid_once(
 
 
 def test_a_large_approval_that_fails_still_waits_for_sign_off(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     def approve_then_crash(claim_id: str, thread_id: str) -> str:
         decide(client, "approve", 1100, "CLM-1002")
         raise RuntimeError("model unavailable")
 
-    monkeypatch.setattr(main, "run_claim_agent", approve_then_crash)
+    agents.claim(approve_then_crash)
     client.post("/api/claims/CLM-1002/run")
     assert state(client, "CLM-1002") == "waiting_for_sign_off"
     assert attempts() == [1]
 
 
 def test_a_claim_left_for_a_handler_cannot_be_worked(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
+    client: TestClient, agents: Agents
 ):
     def approve_only(claim_id: str, thread_id: str) -> str:
         decide(client, "approve", 420)
         return "done"
 
-    run_with(monkeypatch, client, approve_only)
-    run_with(monkeypatch, client, approve_only)
+    run_with(agents, client, approve_only)
+    run_with(agents, client, approve_only)
     assert state(client) == "left_for_handler"
     assert client.post("/api/claims/CLM-1001/run").status_code == 409
     assert decide(client, "decline", 0).status_code == 409
@@ -141,20 +142,20 @@ def test_a_failure_inside_end_attempt_changes_nothing(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     conn = connect()
-    rules.start_attempt(conn, "CLM-1001")
+    attempt_rules.start_attempt(conn, "CLM-1001")
 
     def fail(conn: sqlite3.Connection, claim_id: str) -> int:
         raise RuntimeError("database is locked")
 
-    real = rules.failed_attempts
-    monkeypatch.setattr(rules, "failed_attempts", fail)
+    real = attempt_rules.failed_attempts
+    monkeypatch.setattr(attempt_rules, "failed_attempts", fail)
     with pytest.raises(RuntimeError):
-        rules.end_attempt(conn, "CLM-1001", "The agent crashed.")
+        attempt_rules.end_attempt(conn, "CLM-1001", "The agent crashed.")
     conn.close()
     assert state(client) == "in_progress"
     assert errors(client) == []
     assert attempts() == [None]
-    monkeypatch.setattr(rules, "failed_attempts", real)
+    monkeypatch.setattr(attempt_rules, "failed_attempts", real)
     with TestClient(app) as restarted:
         assert state(restarted) == "waiting"
         assert errors(restarted) == ["The backend stopped during this attempt."]

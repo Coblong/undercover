@@ -74,10 +74,10 @@ Findings from section I of the review, and part of H1.
 
 Success criteria:
 
-- [ ] The backend tests and the agent tests pass with no edits to what they assert, only to how they replace the agent. No test patches an attribute of `backend.main` any more (a `grep` for `monkeypatch.setattr(main` and `backend_main` finds none).
-- [ ] `backend/main.py` is under 150 lines and contains no agent or run logic; no module in `backend/` is over 200 lines.
-- [ ] A test fails if a route is added with no `operation_id`, as today, and the OpenAPI document is unchanged except for the history route and `work_claim`'s result.
-- [ ] `docs/STATUS.md` describes the modules. `npm run check:python` passes.
+- [x] The backend tests and the agent tests pass with no edits to what they assert, only to how they replace the agent. No test patches an attribute of `backend.main` any more (a `grep` for `backend_main` finds none, and the remaining patches of `main` are of `agent.main`).
+- [x] `backend/main.py` is under 150 lines and contains no agent or run logic; no module in `backend/` is over 200 lines.
+- [x] A test fails if a route is added with no `operation_id`, as today, and the OpenAPI document is unchanged except for the history route and `work_claim`'s result.
+- [x] `docs/STATUS.md` describes the modules. `npm run check:python` passes.
 
 ## Phase 4: The dashboard and the tests
 

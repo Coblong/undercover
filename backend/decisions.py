@@ -4,7 +4,7 @@ import sqlite3
 
 from fastapi import HTTPException
 
-from backend import documents, queries, runs
+from backend import documents, queries
 from backend.db import now, payout_limit, transaction
 from backend.models import (
     DecisionRequest,
@@ -12,11 +12,7 @@ from backend.models import (
     PaymentRequest,
     SignOffRequest,
     State,
-    Step,
-    StepRequest,
 )
-
-MAX_FAILED_ATTEMPTS = 2
 
 
 def money(amount: float) -> str:
@@ -163,146 +159,3 @@ def sign_off(conn: sqlite3.Connection, claim_id: str, body: SignOffRequest) -> O
         state="decided",
         message=f"{handler['name']} signed off. Paid {money(payout)}.",
     )
-
-
-def record_step(conn: sqlite3.Connection, claim_id: str, body: StepRequest) -> Step:
-    """Insert a step. The caller holds the transaction."""
-    queries.claim_state(conn, claim_id)
-    created_at = now()
-    cursor = conn.execute(
-        "INSERT INTO steps (claim_id, kind, text, created_at) VALUES (?, ?, ?, ?)",
-        (claim_id, body.kind, body.text, created_at),
-    )
-    return Step(
-        id=cursor.lastrowid or 0, kind=body.kind, text=body.text, created_at=created_at
-    )
-
-
-def add_step(conn: sqlite3.Connection, claim_id: str, body: StepRequest) -> Step:
-    """Record one thing the agent did on a claim."""
-    with transaction(conn):
-        return record_step(conn, claim_id, body)
-
-
-def start_attempt(
-    conn: sqlite3.Connection, claim_id: str, run_id: int | None = None
-) -> Outcome:
-    """Mark a waiting claim as in progress and record the attempt, or refuse.
-
-    In a run, a claim the run has not started yet counts against its limit.
-    """
-    with transaction(conn):
-        state = queries.claim_state(conn, claim_id)
-        if run_id is not None:
-            runs.check_can_start(conn, run_id, claim_id)
-        if state != "waiting":
-            raise HTTPException(
-                409, f"Claim {claim_id} is {state}, so the agent cannot start on it"
-            )
-        conn.execute(
-            "UPDATE claims SET state = 'in_progress' WHERE claim_id = ?", (claim_id,)
-        )
-        conn.execute(
-            "INSERT INTO attempts (claim_id, run_id, started_at) VALUES (?, ?, ?)",
-            (claim_id, run_id, now()),
-        )
-    return Outcome(
-        claim_id=claim_id, state="in_progress", message="The agent has started."
-    )
-
-
-def unfinished_reason(conn: sqlite3.Connection, claim_id: str) -> str | None:
-    """Say what is missing from a claim's work, or None when it is complete."""
-    decision = conn.execute(
-        "SELECT decision, payout FROM decisions WHERE claim_id = ?", (claim_id,)
-    ).fetchone()
-    if decision is None:
-        return "The agent finished without deciding the claim."
-    paid = conn.execute(
-        "SELECT 1 FROM payments WHERE claim_id = ?", (claim_id,)
-    ).fetchone()
-    if (
-        decision["decision"] == "approve"
-        and decision["payout"] <= payout_limit()
-        and not paid
-    ):
-        return "The agent approved the claim but did not pay it."
-    return None
-
-
-def end_attempt(conn: sqlite3.Connection, claim_id: str, error: str | None) -> State:
-    """End an attempt and return the state the claim rests in.
-
-    A claim with unfinished work goes back to waiting, or is left for a handler
-    once two attempts have failed. Finished work settles as the decision says.
-    Everything happens in one transaction, so a failure part way changes nothing.
-    """
-    with transaction(conn):
-        reason = unfinished_reason(conn, claim_id)
-        problem = error or reason
-        if problem is not None:
-            record_step(conn, claim_id, StepRequest(kind="error", text=problem))
-        conn.execute(
-            "UPDATE attempts SET failed = ? WHERE failed IS NULL AND claim_id = ?",
-            (int(problem is not None), claim_id),
-        )
-        new_state: State
-        if reason is None:
-            decision = conn.execute(
-                "SELECT decision, payout FROM decisions WHERE claim_id = ?",
-                (claim_id,),
-            ).fetchone()
-            new_state = settled_state(decision["decision"], decision["payout"])
-        elif failed_attempts(conn, claim_id) >= MAX_FAILED_ATTEMPTS:
-            record_step(
-                conn,
-                claim_id,
-                StepRequest(
-                    kind="error",
-                    text="The claim failed twice, so it is left for a handler.",
-                ),
-            )
-            new_state = "left_for_handler"
-        else:
-            new_state = "waiting"
-        conn.execute(
-            "UPDATE claims SET state = ? WHERE claim_id = ?", (new_state, claim_id)
-        )
-    return new_state
-
-
-def failed_attempts(conn: sqlite3.Connection, claim_id: str) -> int:
-    """Count the attempts on a claim that failed."""
-    return conn.execute(
-        "SELECT COUNT(*) FROM attempts WHERE claim_id = ? AND failed = 1", (claim_id,)
-    ).fetchone()[0]
-
-
-def recover(conn: sqlite3.Connection) -> None:
-    """Settle claims left in progress by a backend that stopped."""
-    stuck = conn.execute("SELECT claim_id FROM claims WHERE state = 'in_progress'")
-    for row in stuck.fetchall():
-        end_attempt(conn, row["claim_id"], "The backend stopped during this attempt.")
-
-
-def result_line(conn: sqlite3.Connection, claim_id: str) -> str:
-    """Say in one line how the work on a claim ended."""
-    claim = queries.get_claim(conn, claim_id)
-    decision = claim.decision
-    if claim.state == "left_for_handler":
-        return f"{claim_id} failed twice and is left for a handler."
-    if claim.state == "waiting" or decision is None:
-        problem = conn.execute(
-            "SELECT text FROM steps WHERE claim_id = ? AND kind = 'error'"
-            " ORDER BY id DESC LIMIT 1",
-            (claim_id,),
-        ).fetchone()
-        return (
-            f"{claim_id} failed ({problem['text']}) and is waiting to be tried again."
-        )
-    line = f"{claim_id} decided: {decision.decision}"
-    if decision.decision != "approve":
-        return line + "."
-    if claim.payment is not None:
-        return f"{line} {money(decision.payout)}, paid."
-    return f"{line} {money(decision.payout)}, waiting for a handler's sign-off."
