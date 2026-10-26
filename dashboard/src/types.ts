@@ -101,3 +101,20 @@ export interface Handler {
   name: string;
   role: string;
 }
+
+export type TodoStatus = "to_do" | "in_progress" | "done" | "left_for_handler";
+
+export interface Todo {
+  text: string;
+  status: TodoStatus;
+}
+
+export interface Run {
+  run_id: number;
+  limit: number;
+  state: "running" | "finished" | "failed";
+  summary: string;
+  started_at: string;
+  ended_at: string | null;
+  todos: Todo[];
+}

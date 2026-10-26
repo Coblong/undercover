@@ -18,20 +18,36 @@ export function Steps({
     active ? always : undefined,
   );
   if (!steps?.length && !active) return null;
+  const reads = steps?.filter((step) => step.kind === "read") ?? [];
   return (
-    <section className="steps" aria-label="Agent steps">
-      <h3>What the agent did</h3>
-      {active && <p className="muted">Working on this claim now.</p>}
-      <ol>
-        {steps?.map((step) => (
-          <li key={step.id} className={step.kind === "error" ? "problem" : ""}>
-            <span className="muted">{LABEL[step.kind]}</span>
-            <span className={step.kind === "message" ? "" : "mono"}>
-              {step.text}
-            </span>
-          </li>
-        ))}
-      </ol>
-    </section>
+    <>
+      {reads.length > 0 && (
+        <section aria-label="What it read">
+          <h3>What it read</h3>
+          <ul className="reads">
+            {reads.map((step) => (
+              <li key={step.id}>{step.text}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+      <section className="steps" aria-label="Agent steps">
+        <h3>What the agent did</h3>
+        {active && <p className="muted">Working on this claim now.</p>}
+        <ol>
+          {steps?.map((step) => (
+            <li
+              key={step.id}
+              className={step.kind === "error" ? "problem" : ""}
+            >
+              <span className="muted">{LABEL[step.kind]}</span>
+              <span className={step.kind === "message" ? "" : "mono"}>
+                {step.text}
+              </span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    </>
   );
 }

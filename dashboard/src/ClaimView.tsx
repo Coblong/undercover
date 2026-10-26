@@ -184,6 +184,12 @@ export function ClaimView({
       {claim.state === "waiting" && (
         <RunAgent claimId={claim.claim_id} onDone={changed} />
       )}
+      {claim.state === "left_for_handler" && (
+        <p className="inset">
+          The agent could not finish this claim in two tries. A handler needs to
+          look at it.
+        </p>
+      )}
       <Steps claimId={claim.claim_id} active={claim.state === "in_progress"} />
       {claim.decision && (
         <DecisionPanel

@@ -148,3 +148,14 @@ it("follows the agent while it works, then stops", async () => {
   expect(fetchStub.mock.calls).toHaveLength(loads);
   vi.useRealTimers();
 });
+
+it("says a claim left for a handler needs one, and offers no run", async () => {
+  const left = { ...claim, state: "left_for_handler" as const };
+  stubApi({ "/api/claims/CLM-1001": left, ...claimRoutes });
+  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  expect(
+    await screen.findByText(/A handler needs to look at it/),
+  ).toBeDefined();
+  expect(screen.getByText("Left for a handler")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Run agent" })).toBeNull();
+});

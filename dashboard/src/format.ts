@@ -1,4 +1,4 @@
-import type { State, Verdict } from "./types";
+import type { Run, State, TodoStatus, Verdict } from "./types";
 
 export type Tone = "marigold" | "cerulean" | "coral" | "seagreen" | "raspberry";
 
@@ -24,6 +24,32 @@ export const STATE_TONE: Record<State, Tone> = {
   waiting_for_sign_off: "coral",
   decided: "seagreen",
   left_for_handler: "raspberry",
+};
+
+export const TODO_LABEL: Record<TodoStatus, string> = {
+  to_do: "To do",
+  in_progress: "In progress",
+  done: "Done",
+  left_for_handler: "Left for a handler",
+};
+
+export const TODO_TONE: Record<TodoStatus, Tone> = {
+  to_do: "marigold",
+  in_progress: "cerulean",
+  done: "seagreen",
+  left_for_handler: "raspberry",
+};
+
+export const RUN_LABEL: Record<Run["state"], string> = {
+  running: "Running",
+  finished: "Finished",
+  failed: "Failed",
+};
+
+export const RUN_TONE: Record<Run["state"], Tone> = {
+  running: "cerulean",
+  finished: "seagreen",
+  failed: "raspberry",
 };
 
 export const VERDICT_LABEL: Record<Verdict, string> = {

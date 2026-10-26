@@ -412,3 +412,63 @@ button.primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.run {
+  grid-column: 1 / -1;
+}
+
+.run-form {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.75rem 0;
+}
+
+.run-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+input[type="number"] {
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font: inherit;
+  width: 8rem;
+}
+
+.todos {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.4rem;
+  margin: 0.75rem 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todos li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.75rem;
+  border-radius: 12px;
+  background: var(--hover);
+}
+
+.reads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0.5rem 0;
+}
+
+.reads li {
+  padding: 0.2rem 0.75rem;
+  border-radius: 999px;
+  background: var(--selected);
+}

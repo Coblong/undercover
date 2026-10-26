@@ -1,5 +1,11 @@
 import { vi } from "vitest";
-import type { ClaimDetail, ClaimHistory, ClaimSummary, Policy } from "./types";
+import type {
+  ClaimDetail,
+  ClaimHistory,
+  ClaimSummary,
+  Policy,
+  Run,
+} from "./types";
 
 export const summaries: ClaimSummary[] = [
   {
@@ -140,4 +146,26 @@ export const waitingForSignOff: ClaimDetail = {
     policy_section: "5. Baggage and Personal Effects",
     decided_at: "2026-10-15T10:00:00+00:00",
   },
+};
+
+export const runningRun: Run = {
+  run_id: 1,
+  limit: 5,
+  state: "running",
+  summary: "",
+  started_at: "2026-10-26T10:00:00+00:00",
+  ended_at: null,
+  todos: [
+    { text: "CLM-1003 passport", status: "done" },
+    { text: "CLM-1001 delay", status: "in_progress" },
+    { text: "CLM-1002 baggage", status: "to_do" },
+    { text: "CLM-1004 medical", status: "left_for_handler" },
+  ],
+};
+
+export const finishedRun: Run = {
+  ...runningRun,
+  state: "finished",
+  summary: "Three claims decided. One is left for a handler.",
+  ended_at: "2026-10-26T10:10:00+00:00",
 };

@@ -8,12 +8,13 @@ afterEach(cleanup);
 
 it("counts the claims in each state", () => {
   render(<Queue claims={summaries} selected={null} onSelect={vi.fn()} />);
-  const counts = screen.getAllByRole("listitem").slice(0, 4);
+  const counts = screen.getAllByRole("listitem").slice(0, 5);
   expect(counts.map((item) => item.textContent)).toEqual([
     "1Waiting",
     "0In progress",
     "1Waiting for sign-off",
     "1Decided",
+    "0Left for a handler",
   ]);
 });
 

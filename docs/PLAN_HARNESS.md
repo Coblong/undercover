@@ -136,11 +136,11 @@ Shows the run, its to-do list and what the agent read. Uses the brand: Raspberry
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes with at least 80% coverage, with tests for the run form, the to-do panel (each status, polling that starts and stops, the finished summary, no run yet), the five counts, the "What it read" list and the two instructions.
-- [ ] `npm run e2e` passes, with tests that: start a run through the API with a limit of 5, write a to-do list, and see it in the dashboard; update an item and see the chip change without a reload; show a `left_for_handler` claim in the queue with the right label and no "Run agent" button; show a claim's "What it read" from seeded `read` steps; show both instructions with no way to edit them.
-- [ ] In the browser (Playwright MCP) against the dev servers, a screenshot in light mode and one in dark mode of the queue page with a to-do list show the brand's colors with readable text, and the page has no horizontal scroll at 1280 px and stays usable at 800 px.
-- [ ] No `any` in `dashboard/`, and `tsc` passes in strict mode.
-- [ ] The e2e run leaves `backend/undercover.db` untouched.
+- [x] `npm run check:ts` passes with at least 80% coverage, with tests for the run form, the to-do panel (each status, polling that starts and stops, the finished summary, no run yet), the five counts, the "What it read" list and the two instructions.
+- [x] `npm run e2e` passes, with tests that: set up a running run in the test database (the agent is never run, so the run is inserted directly), write a to-do list through the API, and see it in the dashboard; update an item and see the chip change without a reload; show a `left_for_handler` claim in the queue with the right label and no "Run agent" button; show a claim's "What it read" from seeded `read` steps; show both instructions with no way to edit them.
+- [x] In the browser (Playwright MCP) against the dev servers, a screenshot in light mode and one in dark mode of the queue page with a to-do list show the brand's colors with readable text, and the page has no horizontal scroll at 1280 px and stays usable at 800 px.
+- [x] No `any` in `dashboard/`, and `tsc` passes in strict mode.
+- [x] The e2e run leaves `backend/undercover.db` untouched.
 
 ## Phase 6: Live check and documents
 
