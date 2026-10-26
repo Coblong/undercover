@@ -8,6 +8,8 @@ from backend import queries
 from backend.db import now
 from backend.models import Run, Todo
 
+SHOWN = 10
+
 
 def get_run(conn: sqlite3.Connection, run_id: int) -> Run:
     """Return a run with its to-do list, or raise a 404."""
@@ -112,9 +114,10 @@ def finish(conn: sqlite3.Connection, run_id: int, summary: str) -> Run:
     running_run(conn, run_id)
     missed = missed_claims(conn, run_id)
     if missed:
+        more = f" and {len(missed) - SHOWN} more" if len(missed) > SHOWN else ""
         raise HTTPException(
             409,
-            f"You have missed {', '.join(missed)}."
+            f"You have missed {', '.join(missed[:SHOWN])}{more}."
             " Work them, then finish the run again",
         )
     end(conn, run_id, "finished", summary)

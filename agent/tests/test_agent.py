@@ -7,49 +7,13 @@ from typing import Any
 import httpx
 import pytest
 from fastapi.testclient import TestClient
-from langchain_core.language_models.fake_chat_models import GenericFakeChatModel
 from langchain_core.messages import AIMessage
 
 from agent import main
+from agent.tests.stubs import StubModel, calls, decision, stub
 from backend import main as backend_main
-from backend.main import app
 
-
-class StubModel(GenericFakeChatModel):
-    """A chat model that gives scripted replies in place of a real model."""
-
-    def bind_tools(self, tools, **kwargs):
-        return self
-
-
-def calls(*calls: tuple[str, dict[str, object]]) -> AIMessage:
-    return AIMessage(
-        content="",
-        tool_calls=[
-            {"name": name, "args": args, "id": str(i)}
-            for i, (name, args) in enumerate(calls)
-        ],
-    )
-
-
-def decision(claim_id: str, kind: str, payout: float) -> tuple[str, dict[str, object]]:
-    args = {
-        "claim_id": claim_id,
-        "decision": kind,
-        "payout": payout,
-        "explanation": "Covered by the wording.",
-        "policy_section": "3. Trip Delay",
-    }
-    return ("decide_claim", args)
-
-
-def stub(*replies: AIMessage) -> StubModel:
-    return StubModel(messages=iter(replies))
-
-
-@pytest.fixture(autouse=True)
-def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(main, "backend", lambda: TestClient(app))
+pytestmark = pytest.mark.usefixtures("in_process_backend")
 
 
 def claim(client: TestClient, claim_id: str = "CLM-1001") -> dict[str, Any]:

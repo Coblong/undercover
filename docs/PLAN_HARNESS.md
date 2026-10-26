@@ -115,14 +115,14 @@ Builds the queue agent and ties it to the run from Phase 3.
 
 Success criteria:
 
-- [ ] `uv run pytest agent` passes, with a scripted queue agent and scripted claim agents on stub models. Tests cover: a run on three claims writes a to-do list, works the claims in the order the agent chose, marks them done and finishes with a summary; the list in the database changes as the run goes.
-- [ ] A test for the cap: `limit` 2 on five claims ends with two worked and three `waiting`.
-- [ ] A test for a failed claim: the second of three claims crashes; the run still works the third; the failed claim is `waiting`, is retried in the same run and, on a second crash, ends `left_for_handler`; the to-do item is `left_for_handler`.
-- [ ] A test for the check: a stub queue agent that tries to finish early is refused by `finish_run`, works the claim it names and finishes.
-- [ ] A test that the agent stopping without finishing gets reminded, and after two reminders the run ends as failed with an error recorded.
-- [ ] Each claim's steps are recorded on that claim, and the queue agent's own messages never include a claim's story or documents (checked by a test on its messages).
-- [ ] `uv run -m agent --help` prints the new usage.
-- [ ] `npm run check:python` passes.
+- [x] `uv run pytest agent` passes, with a scripted queue agent and scripted claim agents on stub models. Tests cover: a run on three claims writes a to-do list, works the claims in the order the agent chose, marks them done and finishes with a summary; the list in the database changes as the run goes.
+- [x] A test for the cap: `limit` 2 on five claims ends with two worked and three `waiting`.
+- [x] A test for a failed claim: the second of three claims crashes; the run still works the third; the failed claim is `waiting`, is retried in the same run and, on a second crash, ends `left_for_handler`; the to-do item is `left_for_handler`.
+- [x] A test for the check: a stub queue agent that tries to finish early is refused by `finish_run`, works the claim it names and finishes.
+- [x] A test that the agent stopping without finishing gets reminded, and after two reminders the run ends as failed with an error recorded.
+- [x] Each claim's steps are recorded on that claim, and the queue agent's own messages never include a claim's story or documents (checked by a test on its messages).
+- [x] `uv run -m agent --help` prints the new usage.
+- [x] `npm run check:python` passes.
 
 ## Phase 5: Dashboard
 

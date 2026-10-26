@@ -30,14 +30,16 @@ RETRY_DELAY = 1.0
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
 
 
-def backend() -> httpx.Client:
+def backend(timeout: float = 30) -> httpx.Client:
     """Return a client for the UnderCover backend."""
-    return httpx.Client(base_url=BACKEND_URL, timeout=30)
+    return httpx.Client(base_url=BACKEND_URL, timeout=timeout)
 
 
-def call(method: str, path: str, body: dict[str, Any] | None = None) -> str:
+def call(
+    method: str, path: str, body: dict[str, Any] | None = None, timeout: float = 30
+) -> str:
     """Call the backend and return the answer as text, or the reason it refused."""
-    with backend() as client:
+    with backend(timeout) as client:
         response = client.request(method, path, json=body)
     if response.is_success:
         return response.text
