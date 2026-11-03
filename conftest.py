@@ -5,8 +5,22 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent import main
-from backend import work
+from backend import db, work
 from backend.main import app
+
+
+@pytest.fixture(autouse=True)
+def isolated_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keep every test off Supabase, Langfuse and the real agent service.
+
+    The values are set, not removed, so that loading `.env` does not replace them.
+    Port 9 refuses connections, so a test that reaches for the service fails at once.
+    """
+    for name in ("DATABASE_URL", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
+        monkeypatch.setenv(name, "")
+    monkeypatch.setenv("UNDERCOVER_AGENT", "http://127.0.0.1:9")
+    yield
+    db.dispose_engines()
 
 
 @pytest.fixture

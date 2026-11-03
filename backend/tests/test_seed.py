@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from backend import payout
 from backend.main import app
 
 ALLOWED_FILES = {
@@ -12,6 +13,7 @@ ALLOWED_FILES = {
     "customers.json",
     "handlers.json",
     "company.json",
+    "plans.json",
     "policy_wording.md",
     "claims_manual.md",
     "instructions_claim.md",
@@ -46,6 +48,7 @@ def test_starting_twice_does_not_duplicate(
 
 def test_only_allowed_files_are_read(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("UNDERCOVER_DB", str(tmp_path / "spy.db"))
+    payout.plans.cache_clear()
     read: set[str] = set()
     original = Path.read_text
 
@@ -63,5 +66,14 @@ def test_only_allowed_files_are_read(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "/api/instructions/queue",
         ):
             client.get(path)
-    assert {"claims.json", "policy_wording.md", "claims_manual.md"} <= read
+        client.post(
+            "/api/claims/CLM-1001/payout",
+            json={"benefit": "trip_delay", "lines": [], "paid_by_others": 0},
+        )
+    assert {
+        "claims.json",
+        "plans.json",
+        "policy_wording.md",
+        "claims_manual.md",
+    } <= read
     assert read <= ALLOWED_FILES

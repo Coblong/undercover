@@ -1,9 +1,17 @@
 """Routes for claims, documents and what the team and the agent read and write."""
 
-from fastapi import APIRouter
+from fastapi import APIRouter, BackgroundTasks
 
-from backend import attempts, decisions, documents, instructions, queries
-from backend.deps import Db
+from backend import (
+    attempts,
+    decisions,
+    documents,
+    instructions,
+    payout,
+    queries,
+    work,
+)
+from backend.deps import ClaimAgent, Db
 from backend.instructions import AgentName
 from backend.models import (
     ClaimDetail,
@@ -22,6 +30,7 @@ from backend.models import (
     StepRequest,
     Text,
 )
+from backend.payout import Payout, PayoutRequest
 
 router = APIRouter()
 
@@ -107,6 +116,22 @@ def pay_claim(claim_id: str, body: PaymentRequest, conn: Db) -> Outcome:
 
 
 @router.post("/api/claims/{claim_id}/sign-off", operation_id="sign_off_claim")
-def sign_off_claim(claim_id: str, body: SignOffRequest, conn: Db) -> Outcome:
-    """Sign off a payout over the limit as a handler, which pays it."""
-    return decisions.sign_off(conn, claim_id, body)
+def sign_off_claim(
+    claim_id: str,
+    body: SignOffRequest,
+    conn: Db,
+    background: BackgroundTasks,
+    agent: ClaimAgent,
+) -> Outcome:
+    """Sign off a payout over the limit as a handler, and hand it to the agent."""
+    outcome = decisions.sign_off(conn, claim_id, body)
+    background.add_task(work.execute_attempt, claim_id, None, agent, True)
+    return outcome
+
+
+@router.post("/api/claims/{claim_id}/payout", operation_id="calculate_payout")
+def calculate_payout(claim_id: str, body: PayoutRequest, conn: Db) -> Payout:
+    """Work out the payout on an approved claim with UnderCover's payout rules."""
+    claim = queries.get_claim(conn, claim_id)
+    policy = queries.get_policy(conn, claim.policy_id)
+    return payout.work_out_payout(policy.model_dump(), body)

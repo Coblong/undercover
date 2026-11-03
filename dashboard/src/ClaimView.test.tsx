@@ -58,6 +58,50 @@ it("shows who signed off", async () => {
   expect(await screen.findByText(/Signed off by Dana Whitfield/)).toBeDefined();
 });
 
+it("says the agent is paying a claim that was signed off", async () => {
+  const paying = {
+    ...decidedClaim,
+    state: "in_progress" as const,
+    payment: null,
+    sign_off: {
+      handler_id: "HND-01",
+      handler_name: "Dana Whitfield",
+      signed_off_at: "2026-10-15T10:00:00+00:00",
+    },
+  };
+  stubApi({
+    "/api/claims/CLM-1001": paying,
+    "/api/claims/CLM-1001/steps": [],
+    ...claimRoutes,
+  });
+  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  expect(await screen.findByText(/The agent is paying it/)).toBeDefined();
+  expect(screen.queryByText(/Paid \$/)).toBeNull();
+});
+
+it("shows who a payment was signed off by", async () => {
+  const signedOff = {
+    ...decidedClaim,
+    payment: {
+      amount: 1250,
+      paid_at: "2026-10-15T10:01:00+00:00",
+      signed_off_by: "HND-01",
+      signed_off_at: "2026-10-15T10:00:00+00:00",
+    },
+    sign_off: {
+      handler_id: "HND-01",
+      handler_name: "Dana Whitfield",
+      signed_off_at: "2026-10-15T10:00:00+00:00",
+    },
+  };
+  stubApi({ "/api/claims/CLM-1001": signedOff, ...claimRoutes });
+  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  const decision = await screen.findByRole("region", { name: "Decision" });
+  expect(decision.textContent).toContain("Signed off by Dana Whitfield");
+  expect(decision.textContent).toContain("Paid $1,250.00");
+  expect(decision.textContent).not.toContain("The agent is paying it");
+});
+
 it("says so when there are no earlier claims", async () => {
   stubApi({
     "/api/claims/CLM-1001": claim,

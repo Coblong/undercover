@@ -14,6 +14,7 @@ OPERATIONS = {
     "add_step",
     "decide_claim",
     "pay_claim",
+    "calculate_payout",
     "sign_off_claim",
     "run_agent",
     "start_run",

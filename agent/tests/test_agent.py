@@ -1,6 +1,7 @@
 import ast
 import itertools
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -8,8 +9,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage
+from langgraph.checkpoint.memory import InMemorySaver
+from pydantic import Field
 
 from agent import main
+from agent.settings import AgentError
 from agent.tests.stubs import StubModel, calls, decision, stub
 from conftest import Agents
 
@@ -41,11 +45,30 @@ def test_read_tools():
     assert "Trip Delay" in section
 
 
+def test_the_payout_tool_uses_the_rules_for_its_claim():
+    lines = [
+        {
+            "description": "Hotel",
+            "amount": 420,
+            "quantity": 1,
+            "kind": "expense",
+            "nights": 0,
+            "hours": 0,
+        }
+    ]
+    result = tools_for()["calculate_payout"].invoke(
+        {"benefit": "trip_delay", "lines": lines, "paid_by_others": 0}
+    )
+    assert json.loads(result)["payout"] == 420
+    refused = tools_for("CLM-9999")["calculate_payout"].invoke(
+        {"benefit": "trip_delay", "lines": lines, "paid_by_others": 0}
+    )
+    assert refused.startswith("Error 404")
+
+
 def test_tools_return_the_reason_when_the_backend_refuses():
     assert tools_for("CLM-9999")["get_claim"].invoke({}).startswith("Error 404")
     assert tools_for("CLM-9999")["get_policy"].invoke({}).startswith("Error 404")
-    paid = tools_for()["pay_claim"].invoke({"amount": 10})
-    assert paid.startswith("Error 409")
     refused = tools_for()["decide_claim"].invoke(
         {
             "decision": "approve",
@@ -84,31 +107,58 @@ def test_every_tool_reaches_only_its_own_claim(monkeypatch: pytest.MonkeyPatch):
             "policy_section": "9. General exclusions",
         }
     )
-    tools["pay_claim"].invoke({"amount": 1})
     own = [p for p in paths if "CLM-1002" in p]
     other = [p for p in paths if p not in own]
-    assert len(own) == 5
+    assert len(own) == 4
     assert other == ["/api/policies/POL-2002"] or all("POL-" in p for p in other)
 
 
-def test_run_approves_and_pays(client: TestClient):
+class RecordingModel(StubModel):
+    """A stub model that counts the times it is called and keeps what it saw."""
+
+    seen: list[list[str]] = Field(default_factory=list)
+
+    def _generate(self, messages, *args, **kwargs):
+        self.seen.append([str(m.content) for m in messages])
+        return super()._generate(messages, *args, **kwargs)
+
+
+def looping_calls() -> Iterator[AIMessage]:
+    """Ask for the claim again and again, with a new message each time."""
+    return (calls(("get_claim", {})) for _ in itertools.count())
+
+
+class FlakyModel(StubModel):
+    """A stub model whose first calls fail."""
+
+    failures: int = 2
+    tried: int = 0
+
+    def _generate(self, messages, *args, **kwargs):
+        self.tried += 1
+        if self.tried <= self.failures:
+            raise httpx.ConnectError("the model is down")
+        return super()._generate(messages, *args, **kwargs)
+
+
+def payments(client: TestClient, claim_id: str = "CLM-1001") -> Any:
+    return claim(client, claim_id)["payment"]
+
+
+def test_the_agent_has_no_tool_to_pay():
+    assert "pay_claim" not in tools_for()
+    assert "calculate_payout" in tools_for()
+
+
+def test_an_approval_is_paid_straight_after_the_decision(client: TestClient):
     reply = main.run(
         "CLM-1001",
         "thread-1",
-        stub(
-            calls(("get_claim", {})),
-            calls(decision("approve", 420)),
-            calls(("pay_claim", {"amount": 420})),
-            AIMessage(content="Approved, $420.00."),
-        ),
+        stub(calls(("get_claim", {})), calls(decision("approve", 420))),
     )
-    assert reply == "Approved, $420.00."
-    done = claim(client)
-    assert done["state"] == "decided"
-    assert done["payment"]["amount"] == 420.0
+    assert reply == "approve 420.00, paid"
+    assert payments(client)["amount"] == 420.0
     assert [s["kind"] for s in steps(client)] == [
-        "tool_call",
-        "tool_result",
         "tool_call",
         "tool_result",
         "tool_call",
@@ -116,50 +166,225 @@ def test_run_approves_and_pays(client: TestClient):
         "message",
     ]
     assert steps(client)[0]["text"] == "get_claim()"
-    assert steps(client)[-1]["text"] == "Approved, $420.00."
+    assert steps(client)[-1]["text"] == "Paid $420.00."
 
 
-def test_run_declines(client: TestClient):
-    main.run(
-        "CLM-1002",
-        "thread-2",
-        stub(calls(decision("decline", 0)), AIMessage(content="Declined.")),
-    )
+def test_a_decline_ends_without_a_payment(client: TestClient):
+    reply = main.run("CLM-1002", "thread-2", stub(calls(decision("decline", 0))))
+    assert reply == "decline 0.00"
     done = claim(client, "CLM-1002")
-    assert done["state"] == "decided"
     assert done["decision"]["decision"] == "decline"
     assert done["payment"] is None
 
 
-def test_refused_payment_comes_back_to_the_agent(client: TestClient):
-    main.run(
+def test_a_large_approval_pauses_for_a_sign_off(client: TestClient):
+    saver = InMemorySaver()
+    reply = main.run(
         "CLM-1003",
         "thread-3",
-        stub(
-            calls(decision("approve", 1250)),
-            calls(("pay_claim", {"amount": 1250})),
-            AIMessage(content="Approved $1,250.00. Payment waits for sign-off."),
-        ),
+        stub(calls(decision("approve", 1250))),
+        checkpointer=saver,
     )
-    done = claim(client, "CLM-1003")
-    assert done["state"] == "waiting_for_sign_off"
-    assert done["payment"] is None
-    assert "Error 409: Payment blocked" in steps(client, "CLM-1003")[-2]["text"]
+    assert reply == "waiting for sign-off"
+    held = claim(client, "CLM-1003")
+    assert held["state"] == "waiting_for_sign_off"
+    assert held["payment"] is None
+    graph = main.ClaimNodes("CLM-1003", "x", stub()).compile(saver)
+    snapshot = graph.get_state({"configurable": {"thread_id": "thread-3"}})
+    assert snapshot.next == ("approval",)
+    assert snapshot.interrupts[0].value == {"claim_id": "CLM-1003", "payout": 1250.0}
+    assert steps(client, "CLM-1003")[-1]["text"] == (
+        "Waiting for a handler to sign off $1,250.00."
+    )
 
 
-def test_instructions_come_from_the_backend(
+def test_a_thread_waiting_for_a_sign_off_stays_put_until_there_is_one(
+    client: TestClient,
+):
+    saver = InMemorySaver()
+    main.run(
+        "CLM-1003", "t", stub(calls(decision("approve", 1250))), checkpointer=saver
+    )
+    assert (
+        main.run("CLM-1003", "t", stub(), checkpointer=saver) == "waiting for sign-off"
+    )
+    assert payments(client, "CLM-1003") is None
+
+
+def test_a_sign_off_resumes_the_thread_and_pays_once(client: TestClient):
+    saver = InMemorySaver()
+    main.run(
+        "CLM-1003", "t", stub(calls(decision("approve", 1250))), checkpointer=saver
+    )
+    signed = client.post("/api/claims/CLM-1003/sign-off", json={"handler_id": "HND-01"})
+    assert signed.status_code == 200
+    reply = main.run("CLM-1003", "t", stub(), checkpointer=saver)
+    assert reply == "approve 1250.00, paid"
+    paid = payments(client, "CLM-1003")
+    assert paid["amount"] == 1250.0
+    assert paid["signed_off_by"] == "HND-01"
+    assert main.run("CLM-1003", "t", stub(), checkpointer=saver) == reply
+    assert claim(client, "CLM-1003")["payment"] == paid
+    assert [s["text"] for s in steps(client, "CLM-1003")][-2:] == [
+        "Signed off by Dana Whitfield.",
+        "Paid $1,250.00.",
+    ]
+
+
+def test_a_stopped_claim_carries_on_from_its_last_step(client: TestClient):
+    saver = InMemorySaver()
+    nodes = main.ClaimNodes("CLM-1001", "Decide.", stub(calls(("get_claim", {}))))
+    graph = nodes.compile(saver)
+    config = {"configurable": {"thread_id": "t"}}
+    first = {
+        "messages": [("user", "Decide claim CLM-1001.")],
+        "claim_id": "CLM-1001",
+        "model_calls": 0,
+        "stage": "undecided",
+        "payout": 0.0,
+        "approved_by": "",
+        "reply": "",
+    }
+    for update in graph.stream(first, config, durability="sync"):  # pyright: ignore[reportArgumentType]
+        if "tools" in update:
+            break
+    recorded = len(steps(client))
+    assert recorded == 2
+    assert claim(client)["decision"] is None
+
+    model = RecordingModel(messages=iter([calls(decision("approve", 420))]))
+    assert main.run("CLM-1001", "t", model, saver) == "approve 420.00, paid"
+    assert len(model.seen) == 1
+    assert any("Rome" in text for text in model.seen[0])
+    assert [s["text"] for s in steps(client)].count("get_claim()") == 1
+    assert claim(client)["decision"]["payout"] == 420.0
+    assert payments(client)["amount"] == 420.0
+
+
+def test_a_thread_on_a_claim_that_is_already_approved_pays_without_the_model(
+    client: TestClient,
+):
+    client.post(
+        "/api/claims/CLM-1001/decision",
+        json={
+            "decision": "approve",
+            "payout": 420,
+            "explanation": "Covered.",
+            "policy_section": "3. Trip Delay",
+        },
+    )
+    model = RecordingModel(messages=iter([]))
+    assert main.run("CLM-1001", "fresh", model) == "approve 420.00, paid"
+    assert model.seen == []
+    assert payments(client)["amount"] == 420.0
+
+
+def test_a_refused_decision_comes_back_to_the_model_as_text(client: TestClient):
+    model = RecordingModel(
+        messages=iter(
+            [
+                calls(decision("approve", 5000)),
+                calls(decision("approve", 420)),
+            ]
+        )
+    )
+    assert main.run("CLM-1001", "t", model) == "approve 420.00, paid"
+    assert any("Error 422: The payout is more than" in m for m in model.seen[1])
+    assert len([s for s in steps(client) if s["kind"] == "tool_result"]) == 2
+
+
+def test_a_failing_model_is_retried(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
-    seen: dict[str, object] = {}
-    real = main.create_agent
+    monkeypatch.setattr(main, "RETRY_DELAY", 0)
+    model = FlakyModel(messages=iter([calls(decision("decline", 0))]))
+    assert main.run("CLM-1002", "t", model) == "decline 0.00"
+    assert model.tried == 3
 
-    def spy(llm, **kwargs):
-        seen.update(kwargs)
-        return real(llm, **kwargs)
 
-    monkeypatch.setattr(main, "create_agent", spy)
-    main.run("CLM-1001", "thread-4", stub(AIMessage(content="Nothing to do.")))
-    assert seen["system_prompt"] == client.get("/api/instructions/claim").json()["text"]
+def test_a_model_that_keeps_failing_stops_the_claim(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(main, "RETRY_DELAY", 0)
+    model = FlakyModel(messages=iter([]), failures=10)
+    with pytest.raises(httpx.ConnectError):
+        main.run("CLM-1002", "t", model)
+    assert model.tried == main.MODEL_TRIES
+
+
+def test_the_model_may_be_called_a_limited_number_of_times(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(main, "CALL_LIMIT", 3)
+    looping = StubModel(messages=looping_calls())
+    with pytest.raises(AgentError, match="called 3 times"):
+        main.run("CLM-1001", "t", looping)
+    assert len([s for s in steps(client) if s["kind"] == "tool_call"]) == 3
+
+
+def test_a_claim_that_fails_goes_back_to_waiting_and_starts_afresh(
+    client: TestClient, agents: Agents, monkeypatch: pytest.MonkeyPatch
+):
+    saver = InMemorySaver()
+    threads: list[str] = []
+    models = iter(
+        [
+            StubModel(messages=looping_calls()),
+            stub(calls(decision("decline", 0))),
+        ]
+    )
+    monkeypatch.setattr(main, "CALL_LIMIT", 2)
+
+    def runner(claim_id: str, thread_id: str) -> str:
+        threads.append(thread_id)
+        return main.run(claim_id, thread_id, next(models), saver)
+
+    agents.claim(runner)
+    assert client.post("/api/claims/CLM-1001/run").status_code == 202
+    assert claim(client)["state"] == "waiting"
+    assert steps(client)[-1]["kind"] == "error"
+    assert client.post("/api/claims/CLM-1001/run").status_code == 202
+    assert claim(client)["state"] == "decided"
+    assert threads[0] != threads[1]
+    assert len(claim(client)["decision"]["explanation"]) > 0
+
+
+def test_instructions_come_from_the_backend(client: TestClient):
+    model = RecordingModel(messages=iter([calls(decision("decline", 0))]))
+    main.run("CLM-1002", "t", model)
+    assert model.seen[0][0] == client.get("/api/instructions/claim").json()["text"]
+
+
+def test_the_instructions_do_not_tell_the_agent_to_pay(client: TestClient):
+    text = client.get("/api/instructions/claim").json()["text"]
+    assert "pay_claim" not in text
+    assert "calculate_payout" in text
+
+
+def test_the_payout_tool_result_reaches_the_model(client: TestClient):
+    line = {
+        "description": "Hotel",
+        "amount": 420,
+        "quantity": 1,
+        "kind": "expense",
+        "nights": 0,
+        "hours": 0,
+    }
+    model = RecordingModel(
+        messages=iter(
+            [
+                calls(
+                    (
+                        "calculate_payout",
+                        {"benefit": "trip_delay", "lines": [line], "paid_by_others": 0},
+                    )
+                ),
+                calls(decision("approve", 420)),
+            ]
+        )
+    )
+    main.run("CLM-1001", "t", model)
+    assert any('"payout":420.0' in text for text in model.seen[1])
 
 
 def test_long_results_are_clipped_in_the_steps(client: TestClient):
@@ -168,7 +393,7 @@ def test_long_results_are_clipped_in_the_steps(client: TestClient):
         "thread-5",
         stub(
             calls(("get_document_section", {"document": "manual", "number": 7})),
-            AIMessage(content="Read it."),
+            calls(decision("decline", 0)),
         ),
     )
     result = steps(client)[2]["text"]
@@ -207,7 +432,7 @@ def test_sections_read_are_recorded_in_order(client: TestClient):
             calls(("get_document_section", {"document": "wording", "number": 3})),
             calls(("get_document_section", {"document": "manual", "number": 10})),
             calls(("get_document_section", {"document": "manual", "number": 99})),
-            AIMessage(content="Read them."),
+            calls(decision("decline", 0)),
         ),
     )
     read = [s["text"] for s in steps(client) if s["kind"] == "read"]
@@ -224,69 +449,30 @@ def test_a_tool_that_fails_comes_back_to_the_model_as_text(
     real = main.call
 
     def flaky(method: str, path: str, body: dict[str, object] | None = None) -> str:
-        if method == "GET" and path == "/api/claims/CLM-1001":
+        if method == "GET" and path == "/api/claims/CLM-1001/claim-history":
             raise httpx.ReadTimeout("slow")
         return real(method, path, body)
 
     monkeypatch.setattr(main, "call", flaky)
-    monkeypatch.setattr(main, "RETRY_DELAY", 0)
-    reply = main.run(
+    main.run(
         "CLM-1001",
         "thread-7",
-        stub(calls(("get_claim", {})), AIMessage(content="Slow.")),
+        stub(calls(("get_claim_history", {})), calls(decision("decline", 0))),
     )
-    assert reply == "Slow."
     assert "ReadTimeout" in steps(client)[1]["text"]
 
 
-def test_a_claim_that_loops_is_stopped_and_goes_back_to_waiting(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, agents: Agents
+def test_a_payment_the_backend_refuses_stops_the_claim(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
-    monkeypatch.setattr(main, "CALL_LIMIT", 3)
-    looping = StubModel(messages=itertools.repeat(calls(("get_claim", {}))))
-    agents.claim(lambda claim_id, thread_id: main.run(claim_id, thread_id, looping))
-    assert client.post("/api/claims/CLM-1001/run").status_code == 202
-    assert claim(client)["state"] == "waiting"
-    assert steps(client)[-1]["kind"] == "error"
-    assert len([s for s in steps(client) if s["kind"] == "tool_call"]) == 3
-
-
-def test_a_backend_that_fails_partway_never_leaves_a_claim_stuck(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch, agents: Agents
-):
-    """After its third call in an attempt, the backend answers every call with a 500."""
     real = main.call
-    made = {"calls": 0}
 
-    def failing(method: str, path: str, *args: Any, **kwargs: Any) -> str:
-        made["calls"] += 1
-        if made["calls"] > 3:
-            return "Error 500: Internal Server Error"
+    def refusing(method: str, path: str, *args: Any, **kwargs: Any) -> str:
+        if path.endswith("/payment"):
+            return "Error 409: Payment blocked"
         return real(method, path, *args, **kwargs)
 
-    def attempt(claim_id: str, thread_id: str) -> str:
-        made["calls"] = 0
-        return main.run(
-            claim_id,
-            thread_id,
-            stub(
-                calls(("get_claim", {})),
-                calls(decision("approve", 420)),
-                calls(("pay_claim", {"amount": 420})),
-                AIMessage(content="Done."),
-            ),
-        )
-
-    monkeypatch.setattr(main, "call", failing)
-    agents.claim(attempt)
-
-    assert client.post("/api/claims/CLM-1001/run").status_code == 202
-    assert claim(client)["state"] == "waiting"
-    assert client.post("/api/claims/CLM-1001/run").status_code == 202
-    assert claim(client)["state"] == "left_for_handler"
-
-    states = {c["state"] for c in client.get("/api/claims").json()}
-    assert "in_progress" not in states
-    texts = [s["text"] for s in steps(client) if s["kind"] == "error"]
-    assert texts[0] == "The agent finished without deciding the claim."
-    assert texts[-1] == "The claim failed twice, so it is left for a handler."
+    monkeypatch.setattr(main, "call", refusing)
+    with pytest.raises(AgentError, match="the payment was refused"):
+        main.run("CLM-1001", "t", stub(calls(decision("approve", 420))))
+    assert payments(client) is None

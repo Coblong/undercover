@@ -1,4 +1,3 @@
-import sqlite3
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -6,6 +5,7 @@ from typing import Any
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import Connection, text
 
 from backend import attempts, decisions, runs
 from backend.db import connect, init_db
@@ -26,7 +26,7 @@ def decision(kind: str = "approve", payout: float = 420) -> DecisionRequest:
     )
 
 
-def on_own_connection(action: Callable[[sqlite3.Connection], Any]) -> Any:
+def on_own_connection(action: Callable[[Connection], Any]) -> Any:
     conn = connect()
     try:
         return action(conn)
@@ -34,7 +34,7 @@ def on_own_connection(action: Callable[[sqlite3.Connection], Any]) -> Any:
         conn.close()
 
 
-def race(action: Callable[[sqlite3.Connection], Any]) -> list[Any]:
+def race(action: Callable[[Connection], Any]) -> list[Any]:
     """Run an action in several threads at once, each on its own connection."""
     barrier = threading.Barrier(THREADS)
     results: list[Any] = []
@@ -70,19 +70,35 @@ def database(
     init_db()
 
 
-def test_one_payment_wins(database: None):
+def test_a_payment_made_at_once_is_made_once(database: None):
     on_own_connection(lambda c: decisions.decide(c, "CLM-1001", decision()))
-    exactly_one_winner(
-        race(lambda c: decisions.pay(c, "CLM-1001", PaymentRequest(amount=420)))
-    )
+    results = race(lambda c: decisions.pay(c, "CLM-1001", PaymentRequest(amount=420)))
+    assert all(not isinstance(r, int | str) for r in results), results
     count = on_own_connection(
-        lambda c: c.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+        lambda c: c.execute(text("SELECT COUNT(*) FROM payments")).scalar_one()
     )
     assert count == 1
 
 
-def test_one_decision_wins(database: None):
-    exactly_one_winner(race(lambda c: decisions.decide(c, "CLM-1001", decision())))
+def test_a_decision_made_at_once_is_recorded_once(database: None):
+    results = race(lambda c: decisions.decide(c, "CLM-1001", decision()))
+    assert all(not isinstance(r, int | str) for r in results), results
+    count = on_own_connection(
+        lambda c: c.execute(text("SELECT COUNT(*) FROM decisions")).scalar_one()
+    )
+    assert count == 1
+
+
+def test_one_of_several_different_decisions_wins(database: None):
+    payouts = iter(range(100, 100 + THREADS))
+    lock = threading.Lock()
+
+    def decide_differently(conn: Connection) -> Any:
+        with lock:
+            payout = next(payouts)
+        return decisions.decide(conn, "CLM-1001", decision(payout=payout))
+
+    exactly_one_winner(race(decide_differently))
 
 
 def test_one_sign_off_wins(database: None):
@@ -109,7 +125,7 @@ def test_a_run_never_starts_more_claims_than_its_limit(database: None):
     claims = iter(f"CLM-10{n:02d}" for n in range(1, 40))
     lock = threading.Lock()
 
-    def start(conn: sqlite3.Connection) -> Any:
+    def start(conn: Connection) -> Any:
         with lock:
             claim_id = next(claims)
         return attempts.start_attempt(conn, claim_id, run_id)

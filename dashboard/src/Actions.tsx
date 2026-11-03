@@ -63,7 +63,10 @@ export function SignOffForm({
         signOff();
       }}
     >
-      <p>The payout is over the limit. It is paid once a handler signs off.</p>
+      <p>
+        The payout is over the limit. The agent pays it once a handler signs
+        off.
+      </p>
       <label>
         Handler
         <select
@@ -85,7 +88,7 @@ export function SignOffForm({
         className="primary"
         disabled={busy || handlerId === ""}
       >
-        Sign off and pay {money(payout)}
+        Sign off {money(payout)}
       </button>
       {failure && <p role="alert">Could not sign off this claim: {failure}</p>}
     </form>

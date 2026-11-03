@@ -1,12 +1,14 @@
 import sys
+from contextlib import closing
 
 import pytest
 from fastapi.testclient import TestClient
 
 from agent import __main__ as cli
 from agent import main
-from backend import runs
+from backend import runs, work
 from backend.db import connect
+from backend.work import AgentStopped
 from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")
@@ -96,7 +98,9 @@ def test_a_run_that_cannot_start_is_reported(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    runs.create(connect(), 1)
+    with closing(connect()) as conn:
+        run_id = runs.create(conn, 1).run_id
+    monkeypatch.setattr(work, "working_runs", lambda: frozenset({run_id}))
     run_cli(monkeypatch)
     assert capsys.readouterr().out.startswith("Error 409: A run is already going")
 
@@ -123,3 +127,54 @@ def test_help(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str
         run_cli(monkeypatch, "--help")
     assert exit_info.value.code == 0
     assert "--limit" in capsys.readouterr().out
+
+
+def test_a_stopped_claim_and_a_stopped_run_are_carried_on_first(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    agents: Agents,
+):
+    def stopped(claim_id: str, thread_id: str) -> str:
+        raise AgentStopped("killed")
+
+    agents.claim(stopped)
+    client.post("/api/claims/CLM-1002/run")
+    with closing(connect()) as conn:
+        run_id = runs.create(conn, 2).run_id
+    assert client.get("/api/claims/CLM-1002").json()["state"] == "in_progress"
+
+    agents.claim(decide_on_the_spot)
+    run_cli(monkeypatch)
+    out = capsys.readouterr().out.splitlines()
+    assert out[0] == f"Carrying on run {run_id}."
+    assert "CLM-1002: decided, decline 0.00" in out
+    assert client.get("/api/claims/CLM-1002").json()["state"] == "decided"
+    assert client.get("/api/runs/latest").json()["run_id"] == run_id
+
+
+def test_one_stopped_claim_is_carried_on_by_name(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    agents: Agents,
+):
+    def stopped(claim_id: str, thread_id: str) -> str:
+        raise AgentStopped("killed")
+
+    agents.claim(stopped)
+    client.post("/api/claims/CLM-1002/run")
+    agents.claim(decide_on_the_spot)
+    run_cli(monkeypatch, "CLM-1002")
+    assert capsys.readouterr().out == "CLM-1002: decided, decline 0.00\n"
+
+
+def test_nothing_to_do_without_waiting_claims_or_a_stopped_run(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+):
+    run_cli(monkeypatch, "--limit", "30")
+    capsys.readouterr()
+    run_cli(monkeypatch)
+    assert capsys.readouterr().out == "No claims are waiting.\n"

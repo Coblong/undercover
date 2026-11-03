@@ -20,12 +20,29 @@ export type DecisionDecision = "approve" | "decline" | "refer";
 
 export type DecisionRequestDecision = "approve" | "decline" | "refer";
 
+export type LineKind =
+  | "item"
+  | "electronics"
+  | "cash"
+  | "expense"
+  | "hotel"
+  | "meals_without_receipts";
+
 export type OutcomeState =
   | "waiting"
   | "in_progress"
   | "waiting_for_sign_off"
   | "decided"
   | "left_for_handler";
+
+export type PayoutRequestBenefit =
+  | "trip_cancellation"
+  | "trip_interruption"
+  | "trip_delay"
+  | "baggage_delay"
+  | "baggage"
+  | "passport"
+  | "emergency_medical";
 
 export type PolicyPlan = "economy" | "premium" | "first";
 
@@ -59,6 +76,7 @@ export interface ClaimDetail {
   incident_date: string;
   incident_location: string;
   items: Item[];
+  needs_sign_off: boolean;
   payment: Payment | null;
   policy_id: string;
   sign_off: SignOff | null;
@@ -124,6 +142,15 @@ export interface Item {
   description: string;
 }
 
+export interface Line {
+  amount: number;
+  description: string;
+  hours: number;
+  kind: LineKind;
+  nights: number;
+  quantity: number;
+}
+
 export interface Outcome {
   claim_id: string;
   message: string;
@@ -133,10 +160,29 @@ export interface Outcome {
 export interface Payment {
   amount: number;
   paid_at: string;
+  signed_off_at: string | null;
+  signed_off_by: string | null;
 }
 
 export interface PaymentRequest {
   amount: number;
+}
+
+export interface Payout {
+  calculation: PayoutStep[];
+  needs_sign_off: boolean;
+  payout: number;
+}
+
+export interface PayoutRequest {
+  benefit: PayoutRequestBenefit;
+  lines: Line[];
+  paid_by_others: number;
+}
+
+export interface PayoutStep {
+  amount: number;
+  step: string;
 }
 
 export interface Policy {

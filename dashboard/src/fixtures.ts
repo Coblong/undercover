@@ -58,6 +58,7 @@ export const claim: ClaimDetail = {
   decision: null,
   payment: null,
   sign_off: null,
+  needs_sign_off: false,
 };
 
 export const decidedClaim: ClaimDetail = {
@@ -71,7 +72,12 @@ export const decidedClaim: ClaimDetail = {
     policy_section: "3. Trip Delay",
     decided_at: "2026-10-15T10:00:00+00:00",
   },
-  payment: { amount: 420, paid_at: "2026-10-15T10:01:00+00:00" },
+  payment: {
+    amount: 420,
+    paid_at: "2026-10-15T10:01:00+00:00",
+    signed_off_by: null,
+    signed_off_at: null,
+  },
   sign_off: null,
 };
 

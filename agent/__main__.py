@@ -31,22 +31,35 @@ def work(claim_id: str) -> None:
     report(claim_id)
 
 
+def claims_in(*states: str) -> list[str]:
+    """Return the ids of the claims in any of these states."""
+    claims = json.loads(call("GET", "/api/claims"))
+    return [c["claim_id"] for c in claims if c["state"] in states]
+
+
 def waiting_claims() -> list[str]:
     """Return the ids of the waiting claims."""
-    claims = json.loads(call("GET", "/api/claims"))
-    return [c["claim_id"] for c in claims if c["state"] == "waiting"]
+    return claims_in("waiting")
 
 
 def work_queue(limit: int | None) -> None:
-    """Start a run on the waiting claims, wait for it, and report each claim."""
-    before = waiting_claims()
-    if not before:
+    """Start a run, wait for it, and report each claim it took up.
+
+    A run first carries on the claims a stopped agent left in progress, and a run
+    left going is finished by this one.
+    """
+    before = claims_in("waiting", "in_progress")
+    latest = json.loads(call("GET", "/api/runs/latest"))
+    stopped = latest if latest and latest["state"] == "running" else None
+    if not before and not stopped:
         print("No claims are waiting.")
         return
-    started = call("POST", "/api/runs", {"limit": limit or len(before)})
+    started = call("POST", "/api/runs", {"limit": limit or len(before) or 1})
     if started.startswith("Error"):
         print(started)
         return
+    if stopped:
+        print(f"Carrying on run {stopped['run_id']}.")
     while (run := json.loads(call("GET", "/api/runs/latest")))["state"] == "running":
         time.sleep(2)
     still_waiting = set(waiting_claims())

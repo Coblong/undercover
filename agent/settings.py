@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
+DEFAULT_AGENT_URL = "http://127.0.0.1:8002"
 
 
 def load_environment(path: Path | None = None) -> None:
@@ -21,9 +22,30 @@ def backend_url() -> str:
     return os.getenv("BACKEND_URL", DEFAULT_BACKEND_URL)
 
 
+def agent_url() -> str:
+    """Return the address of the agent's service."""
+    return os.getenv("UNDERCOVER_AGENT") or DEFAULT_AGENT_URL
+
+
 def model_name() -> str | None:
     """Return the model asked for in MODEL_NAME, if any."""
     return os.getenv("MODEL_NAME") or None
+
+
+def database_url() -> str:
+    """Return the Supabase connection string, or say clearly that it is missing."""
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise AgentError(
+            "DATABASE_URL is not set. The agent saves its progress in Supabase:"
+            " put the connection string in .env or the environment"
+        )
+    return url
+
+
+def langfuse_configured() -> bool:
+    """Say whether the Langfuse keys are set, so claims are traced."""
+    return bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
 
 
 def api_key() -> str:

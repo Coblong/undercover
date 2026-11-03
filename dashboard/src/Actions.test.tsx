@@ -80,7 +80,7 @@ it("signs off as the chosen handler", async () => {
   const onDone = vi.fn();
   render(<SignOffForm claimId="CLM-1001" payout={1250} onDone={onDone} />);
   const button = screen.getByRole("button", {
-    name: "Sign off and pay $1,250.00",
+    name: "Sign off $1,250.00",
   });
   expect((button as HTMLButtonElement).disabled).toBe(true);
   await userEvent.selectOptions(
@@ -109,9 +109,7 @@ it("gives the backend's reason when the sign-off is refused", async () => {
     await screen.findByLabelText("Handler"),
     "Marcus Oyelaran",
   );
-  await userEvent.click(
-    screen.getByRole("button", { name: /Sign off and pay/ }),
-  );
+  await userEvent.click(screen.getByRole("button", { name: /Sign off/ }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Could not sign off this claim: Marcus Oyelaran cannot sign off payouts over the limit",
   );

@@ -47,6 +47,7 @@ function DecisionPanel(
       {signOff && (
         <p className="muted">
           Signed off by {signOff.handler_name} on {date(signOff.signed_off_at)}.
+          {!payment && " The agent is paying it."}
         </p>
       )}
       {payment && (

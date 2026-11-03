@@ -45,6 +45,8 @@ class Decision(BaseModel):
 class Payment(BaseModel):
     amount: float
     paid_at: str
+    signed_off_by: str | None
+    signed_off_at: str | None
 
 
 class SignOff(BaseModel):
@@ -74,6 +76,7 @@ class ClaimDetail(ClaimSummary):
     decision: Decision | None
     payment: Payment | None
     sign_off: SignOff | None
+    needs_sign_off: bool
 
 
 class Trip(BaseModel):
