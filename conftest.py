@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from agent import main
-from backend import db, work
+from backend import agent_service, db
 from backend.main import app
 
 
@@ -48,10 +48,13 @@ def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 class Agents:
-    """Replaces the claim agent the backend runs with one that needs no model."""
+    """Replaces the agents the backend asks for with ones that need no model."""
 
-    def claim(self, runner: work.ClaimAgent) -> None:
-        app.dependency_overrides[work.claim_agent] = lambda: runner
+    def claim(self, runner: agent_service.ClaimAgent) -> None:
+        app.dependency_overrides[agent_service.claim_agent] = lambda: runner
+
+    def dispatch(self, starter: agent_service.DispatchStarter) -> None:
+        app.dependency_overrides[agent_service.dispatch_starter] = lambda: starter
 
 
 @pytest.fixture

@@ -1,10 +1,12 @@
+import threading
+import time
 from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent import main, service
+from agent import dispatcher, main, service
 from agent.settings import AgentError
 from agent.tests.stubs import calls, decision, stub
 
@@ -18,6 +20,8 @@ def agent_service() -> Iterator[TestClient]:
         yield client
     service.app.state.checkpointer = None
     service.app.dependency_overrides.clear()
+    if service._gate.locked():  # noqa: SLF001
+        service._gate.release()  # noqa: SLF001
 
 
 def use_model(*replies):
@@ -105,3 +109,149 @@ def test_claim_agents_share_a_pool_of_four_and_wait_for_a_connection():
     pool = service.make_pool("postgresql://user:pass@localhost/none", open=False)
     assert pool.max_size == 4
     assert pool.timeout == 120
+
+
+class Workers:
+    """Stand-in claim workers that wait to be released and note their claims."""
+
+    def __init__(self) -> None:
+        self.release = threading.Event()
+        self.worked: list[tuple[str, int]] = []
+
+    def __call__(self, claim_id: str, run_id: int) -> str:
+        self.worked.append((claim_id, run_id))
+        self.release.wait(5)
+        return "decided"
+
+
+@pytest.fixture
+def workers() -> Workers:
+    stand_in = Workers()
+    service.app.dependency_overrides[service.claim_worker] = lambda: stand_in
+    return stand_in
+
+
+def latest(client: TestClient) -> dict:
+    return client.get("/api/dispatches/latest").json()
+
+
+def until_ended(client: TestClient) -> dict:
+    for _ in range(100):
+        if latest(client)["state"] != "running":
+            return latest(client)
+        time.sleep(0.05)
+    raise AssertionError("the dispatch never ended")
+
+
+def test_a_dispatch_starts_at_once_and_is_recorded(
+    client: TestClient, agent_service: TestClient, workers: Workers
+):
+    response = agent_service.post("/dispatches", json={"concurrency": 7})
+    assert response.status_code == 202
+    run = latest(client)
+    assert response.json() == {"run_id": run["run_id"]}
+    assert run["state"] == "running"
+    assert (run["concurrency"], run["model"], run["reasoning_effort"]) == (
+        7,
+        "openai/gpt-6-luna",
+        "low",
+    )
+    workers.release.set()
+    ended = until_ended(client)
+    assert ended["state"] == "finished"
+    assert len(workers.worked) == 25
+    assert {run_id for _, run_id in workers.worked} == {run["run_id"]}
+
+
+def test_a_model_from_the_environment_is_recorded_with_no_effort(
+    client: TestClient,
+    agent_service: TestClient,
+    workers: Workers,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("MODEL_NAME", "openrouter/free")
+    workers.release.set()
+    agent_service.post("/dispatches", json={"concurrency": 3})
+    run = until_ended(client)
+    assert (run["model"], run["reasoning_effort"]) == ("openrouter/free", "none")
+
+
+def test_a_second_start_is_refused_while_one_is_running(
+    client: TestClient, agent_service: TestClient, workers: Workers
+):
+    agent_service.post("/dispatches", json={"concurrency": 3})
+    again = agent_service.post("/dispatches", json={"concurrency": 3})
+    assert again.status_code == 409
+    assert "already running" in again.json()["detail"]
+    workers.release.set()
+    first = until_ended(client)
+    assert first["run_id"] == 1
+    assert agent_service.post("/dispatches", json={"concurrency": 3}).status_code == 202
+    until_ended(client)
+    assert latest(client)["run_id"] == 2
+
+
+def test_the_backend_refusing_a_start_frees_the_service(
+    client: TestClient, agent_service: TestClient, workers: Workers
+):
+    client.post(
+        "/api/runs/dispatch",
+        json={"concurrency": 1, "model": "m", "reasoning_effort": "low"},
+    )
+    refused = agent_service.post("/dispatches", json={"concurrency": 3})
+    assert refused.status_code == 409
+    assert not service._gate.locked()  # noqa: SLF001
+
+
+def test_a_number_of_claim_agents_out_of_range_is_refused(agent_service: TestClient):
+    for concurrency in (0, 26):
+        response = agent_service.post("/dispatches", json={"concurrency": concurrency})
+        assert response.status_code == 422
+
+
+def test_a_dispatch_whose_graph_raises_ends_failed(
+    client: TestClient,
+    agent_service: TestClient,
+    workers: Workers,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    def explode(*args: object) -> None:
+        raise RuntimeError("the graph broke")
+
+    monkeypatch.setattr(dispatcher, "run_dispatch", explode)
+    agent_service.post("/dispatches", json={"concurrency": 3})
+    assert until_ended(client)["state"] == "failed"
+    assert not service._gate.locked()  # noqa: SLF001
+
+
+def test_starting_the_service_stops_a_run_that_was_going(client: TestClient):
+    body = {"concurrency": 3, "model": "m", "reasoning_effort": "low"}
+    client.post("/api/runs/dispatch", json=body)
+    client.post("/api/runs/1/end", json={"state": "finished"})
+    client.post("/api/runs/dispatch", json=body)
+    service.app.state.checkpointer = InMemorySaver()
+    try:
+        with TestClient(service.app):
+            assert latest(client)["state"] == "stopped"
+            assert client.get("/api/dispatches/latest").json()["run_id"] == 2
+    finally:
+        service.app.state.checkpointer = None
+    assert client.post("/api/runs/stop").json() == {"stopped": 0}
+
+
+def test_the_service_waits_for_the_backend_to_come_up(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    answers = iter(["Error: the backend could not be reached"] * 2 + ["{}", "{}"])
+    monkeypatch.setattr(main, "call", lambda *args, **kwargs: next(answers))
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+    service.stop_stale_runs()
+
+
+def test_the_service_stops_if_the_backend_never_comes_up(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(main, "call", lambda *args, **kwargs: "Error: down")
+    monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
+    with pytest.raises(AgentError, match="backend could not be reached"):
+        service.stop_stale_runs()

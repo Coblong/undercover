@@ -442,6 +442,44 @@ input[type="number"] {
   width: 8rem;
 }
 
+.figures {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 2rem;
+  margin: 0.75rem 0;
+}
+
+.figures dt {
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+.figures dd {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-scroll th,
+.table-scroll td {
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.table-scroll tbody tr:nth-child(odd) {
+  background: var(--hover);
+}
+
 .reads {
   display: flex;
   flex-wrap: wrap;

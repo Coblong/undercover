@@ -190,6 +190,10 @@ class CreateDispatchRequest(BaseModel):
     reasoning_effort: Effort
 
 
+class StartDispatchRequest(BaseModel):
+    concurrency: int = Field(ge=1, le=25)
+
+
 class EndRunRequest(BaseModel):
     state: Literal["finished", "failed"]
 

@@ -1,4 +1,4 @@
-import type { State, Verdict } from "./types";
+import type { RunState, State, Verdict } from "./types";
 
 export type Tone = "marigold" | "cerulean" | "coral" | "seagreen" | "raspberry";
 
@@ -24,6 +24,20 @@ export const STATE_TONE: Record<State, Tone> = {
   waiting_for_sign_off: "coral",
   decided: "seagreen",
   left_for_handler: "raspberry",
+};
+
+export const RUN_LABEL: Record<RunState, string> = {
+  running: "Running",
+  finished: "Finished",
+  failed: "Failed",
+  stopped: "Stopped",
+};
+
+export const RUN_TONE: Record<RunState, Tone> = {
+  running: "cerulean",
+  finished: "seagreen",
+  failed: "raspberry",
+  stopped: "coral",
 };
 
 export const VERDICT_LABEL: Record<Verdict, string> = {
@@ -70,4 +84,34 @@ export function uniqueKeys(texts: string[]): string[] {
     seen.set(text, count);
     return count === 1 ? text : `${text} (${String(count)})`;
   });
+}
+
+const small = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+});
+
+/** What a model costs, in dollars to four places: a claim costs fractions of a cent. */
+export function modelCost(amount: number): string {
+  return small.format(amount);
+}
+
+/** "4.2 s" for under a minute, "2 min 5 s" after. */
+export function duration(seconds: number): string {
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const whole = Math.round(seconds);
+  return `${String(Math.floor(whole / 60))} min ${String(whole % 60)} s`;
+}
+
+const clock = new Intl.DateTimeFormat("en-US", {
+  timeStyle: "medium",
+  hour12: false,
+  timeZone: "UTC",
+});
+
+/** The time of day, in UTC, of an ISO time. */
+export function timeOfDay(iso: string): string {
+  return clock.format(new Date(iso));
 }

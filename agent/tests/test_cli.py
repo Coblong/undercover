@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 
 from agent import __main__ as cli
 from agent import main
-from backend.work import AgentStopped
+from backend.agent_service import AgentStopped
 from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")

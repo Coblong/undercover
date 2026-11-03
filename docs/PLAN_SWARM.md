@@ -169,13 +169,13 @@ Builds the service's start route, the backend's operation that asks it, and the 
 
 Success criteria:
 
-- [ ] Service tests, with an in-memory saver and the in-process backend: a start answers 202 with the run's id and creates a `running` dispatch with N, the model and the effort; a second start while the first runs answers 409 and creates nothing; the run ends `finished` when the work does, and `failed` when the graph raises; starting the service marks a running dispatch `stopped` and leaves finished ones alone.
-- [ ] Backend tests: `start_dispatch` passes N to the service, returns the dispatch, answers 503 with that message when the service is unreachable, and passes a 409 through. A second start is refused while one runs.
-- [ ] The summary is built from the records in a test: counts of approved, declined and referred, a held payout with its amount, a claim left for a handler and one in progress.
-- [ ] `get_latest_dispatch` totals cost and time by run: a dispatch's totals are its own, include a failed attempt, and leave out a sign-off's later stretch, which has no run.
-- [ ] `npm run check:ts` passes with 80% coverage and tests for the panel: N from 1 to 25 and 3 to start, the refused start showing the backend's reason, the claims list, polling that stops when the run ends, the summary, and a start disabled while running.
-- [ ] `npm run e2e` passes with tests that starting a dispatch on the dashboard with N=7 reaches the stand-in with N=7, that a second start shows the refusal, and that the queue counts are unchanged by a dispatch the test plays out through the API.
-- [ ] `npm run check` passes. The phase is committed.
+- [x] Service tests, with an in-memory saver and the in-process backend: a start answers 202 with the run's id and creates a `running` dispatch with N, the model and the effort; a second start while the first runs answers 409 and creates nothing; the run ends `finished` when the work does, and `failed` when the graph raises; starting the service marks a running dispatch `stopped` and leaves finished ones alone.
+- [x] Backend tests: `start_dispatch` passes N to the service, returns the dispatch, answers 503 with that message when the service is unreachable, and passes a 409 through. A second start is refused while one runs.
+- [x] The summary is built from the records in a test: counts of approved, declined and referred, a held payout with its amount, a claim left for a handler and one in progress.
+- [x] `get_latest_dispatch` totals cost and time by run: a dispatch's totals are its own, include a failed attempt, and leave out a sign-off's later stretch, which has no run.
+- [x] `npm run check:ts` passes with 80% coverage and tests for the panel: N from 1 to 25 and 3 to start, the refused start showing the backend's reason, the claims list, polling that stops when the run ends, the summary, and a start disabled while running.
+- [x] `npm run e2e` passes with tests that starting a dispatch on the dashboard with N=7 reaches the stand-in with N=7, that a second start shows the refusal, and that a dispatch played out through the API shows its claims, cost, time and summary.
+- [x] `npm run check` passes. The phase is committed.
 
 ## Phase 4: Evaluations
 

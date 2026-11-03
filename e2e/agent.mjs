@@ -6,6 +6,7 @@ import { createServer } from "node:http";
 const backend = process.env.BACKEND_URL;
 const delay = Number(process.env.PAY_DELAY_MS ?? 1500);
 const received = [];
+const started = [];
 
 const json = (response, status, body) => {
   response.writeHead(status, { "content-type": "application/json" });
@@ -27,6 +28,18 @@ const pay = async (claimId) => {
   });
 };
 
+// Create a run through the backend as the real service does, and pass a refusal on.
+const startRun = async (path, body, response) => {
+  const created = await fetch(`${backend}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const run = await created.json();
+  if (!created.ok) return json(response, created.status, run);
+  json(response, 202, { run_id: run.run_id });
+};
+
 createServer(async (request, response) => {
   const url = new URL(request.url, "http://localhost");
   const work = /^\/claims\/([^/]+)\/work$/.exec(url.pathname);
@@ -34,6 +47,16 @@ createServer(async (request, response) => {
     json(response, 200, { status: "ok" });
   } else if (request.method === "GET" && url.pathname === "/received") {
     json(response, 200, received);
+  } else if (request.method === "GET" && url.pathname === "/started") {
+    json(response, 200, started);
+  } else if (request.method === "POST" && url.pathname === "/dispatches") {
+    const { concurrency } = await readBody(request);
+    started.push({ kind: "dispatch", concurrency });
+    await startRun(
+      "/api/runs/dispatch",
+      { concurrency, model: "stand-in", reasoning_effort: "none" },
+      response,
+    );
   } else if (request.method === "POST" && work) {
     const { thread_id: threadId } = await readBody(request);
     received.push({ claim_id: work[1], thread_id: threadId });

@@ -15,7 +15,7 @@ from langgraph.types import RetryPolicy
 
 from agent import dispatcher, main
 from agent.tests.stubs import StubModel, calls, decision
-from backend.work import AgentStopped
+from backend.agent_service import AgentStopped
 from conftest import Agents
 
 pytestmark = pytest.mark.usefixtures("in_process_backend")

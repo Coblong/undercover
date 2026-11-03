@@ -1,6 +1,10 @@
 from typing import Any
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+
+from conftest import Agents
 
 DISPATCH = {"concurrency": 3, "model": "openai/gpt-6-luna", "reasoning_effort": "low"}
 SECTION = "3. Trip Delay"
@@ -230,7 +234,7 @@ def test_cost_and_time_are_the_runs_own(client: TestClient):
             == 200
         )
     run = latest(client)
-    assert run["cost"] == 0.07
+    assert run["cost"] == pytest.approx(0.07)
     assert run["claim_seconds"] == 9.0
     by_claim = {c["claim_id"]: c for c in run["claims"]}
     assert (by_claim["CLM-1001"]["cost"], by_claim["CLM-1001"]["seconds"]) == (
@@ -244,3 +248,40 @@ def test_cost_and_time_are_the_runs_own(client: TestClient):
     client.post("/api/claims/CLM-1001/model-calls", json=body)
     assert latest(client)["cost"] == 1.0
     assert client.get("/api/dispatches/latest").json()["run_id"] == second
+
+
+def test_starting_a_dispatch_asks_the_service_with_the_number_of_claim_agents(
+    client: TestClient, agents: Agents
+):
+    asked: list[int] = []
+
+    def starter(concurrency: int) -> int:
+        asked.append(concurrency)
+        return create(client, concurrency=concurrency)["run_id"]
+
+    agents.dispatch(starter)
+    response = client.post("/api/dispatches", json={"concurrency": 9})
+    assert response.status_code == 202
+    assert asked == [9]
+    assert response.json()["concurrency"] == 9
+    assert response.json()["state"] == "running"
+
+
+def test_a_start_the_service_refuses_is_refused_with_its_reason(
+    client: TestClient, agents: Agents
+):
+    def starter(concurrency: int) -> int:
+        raise HTTPException(409, "A dispatch or an evaluation is already running")
+
+    agents.dispatch(starter)
+    response = client.post("/api/dispatches", json={"concurrency": 3})
+    assert response.status_code == 409
+    assert "already running" in response.json()["detail"]
+    assert client.post("/api/dispatches", json={"concurrency": 26}).status_code == 422
+    assert client.post("/api/dispatches", json={"concurrency": 0}).status_code == 422
+
+
+def test_a_service_that_is_not_running_says_so(client: TestClient):
+    response = client.post("/api/dispatches", json={"concurrency": 3})
+    assert response.status_code == 503
+    assert response.json()["detail"] == "The agent's service could not be reached."

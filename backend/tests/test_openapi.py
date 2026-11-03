@@ -20,6 +20,7 @@ OPERATIONS = {
     "record_model_call",
     "record_work_time",
     "create_dispatch",
+    "start_dispatch",
     "get_latest_dispatch",
     "stop_runs",
     "plan_run",

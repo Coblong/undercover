@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from fastapi.testclient import TestClient
 
-from backend.work import AgentStopped
+from backend.agent_service import AgentStopped
 from conftest import Agents
 
 Runner = Callable[[str, str], str]

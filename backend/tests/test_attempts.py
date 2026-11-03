@@ -7,9 +7,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection
 
 from backend import attempts as attempt_rules
+from backend.agent_service import AgentStopped, AgentUnreachable
 from backend.db import connect
 from backend.main import app
-from backend.work import AgentStopped, AgentUnreachable
 from conftest import Agents
 
 Runner = Callable[[str, str], str]

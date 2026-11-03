@@ -292,6 +292,10 @@ export interface SignOffRequest {
   handler_id: string;
 }
 
+export interface StartDispatchRequest {
+  concurrency: number;
+}
+
 export interface StartedClaim {
   claim_id: string;
   resumed: boolean;

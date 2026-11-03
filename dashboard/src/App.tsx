@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { always, useApi } from "./api";
 import { ClaimView } from "./ClaimView";
+import { DispatchPanel } from "./DispatchPanel";
 import { Instructions } from "./Instructions";
 import { Queue } from "./Queue";
 import type { ClaimSummary } from "./types";
@@ -42,6 +43,7 @@ export function App() {
         </main>
       ) : (
         <main className="layout">
+          <DispatchPanel />
           {claims ? (
             <Queue claims={claims} selected={selected} onSelect={setSelected} />
           ) : (

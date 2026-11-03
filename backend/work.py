@@ -3,58 +3,23 @@
 import logging
 import threading
 import time
-from collections.abc import Callable
 from contextlib import closing
 
-import httpx
-
-from agent import settings
-from agent.settings import AgentError, error_text
+from agent.settings import error_text
 from backend import attempts
+from backend.agent_service import (
+    UNREACHABLE,
+    AgentStopped,
+    AgentUnreachable,
+    ClaimAgent,
+)
 from backend.db import connect
 from backend.models import State
 
 logger = logging.getLogger(__name__)
 
-ClaimAgent = Callable[[str, str], str]
-
-WORK_TIMEOUT = 900
-UNREACHABLE = "The agent's service could not be reached."
-
 _lock = threading.Lock()
 _working_claims: set[str] = set()
-
-
-class AgentStopped(Exception):
-    """The agent's service went away while it worked, so the work was not ended."""
-
-
-class AgentUnreachable(AgentStopped):
-    """The agent's service could not be reached, so the work never started."""
-
-
-def call_service(claim_id: str, thread_id: str) -> str:
-    """Ask the agent's service to work a claim on a thread, and return its one line."""
-    try:
-        response = httpx.post(
-            f"{settings.agent_url()}/claims/{claim_id}/work",
-            json={"thread_id": thread_id},
-            timeout=WORK_TIMEOUT,
-        )
-    except httpx.ConnectError as exc:
-        raise AgentUnreachable(UNREACHABLE) from exc
-    except httpx.TransportError as exc:
-        raise AgentStopped(type(exc).__name__) from exc
-    if response.status_code == httpx.codes.CONFLICT:
-        raise AgentStopped("the claim is already being worked")
-    if not response.is_success:
-        raise AgentError(response.text)
-    return response.json()["reply"]
-
-
-def claim_agent() -> ClaimAgent:
-    """Return the agent that works one claim. Tests replace it."""
-    return call_service
 
 
 def enter[T](working: set[T], key: T) -> bool:

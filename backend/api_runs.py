@@ -5,7 +5,7 @@ import logging
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from backend import attempts, queries, runs, work
-from backend.deps import ClaimAgent, Db
+from backend.deps import ClaimAgent, Db, DispatchStarter
 from backend.models import (
     CreateDispatchRequest,
     Dispatch,
@@ -13,6 +13,7 @@ from backend.models import (
     EndRunRequest,
     Outcome,
     RunClaims,
+    StartDispatchRequest,
     StartedClaim,
     StoppedRuns,
 )
@@ -36,6 +37,14 @@ def run_agent(
         outcome = attempts.start_attempt(conn, claim_id)
     background.add_task(work.execute_attempt, claim_id, None, agent, resume)
     return outcome
+
+
+@router.post("/api/dispatches", operation_id="start_dispatch", status_code=202)
+def start_dispatch(
+    body: StartDispatchRequest, conn: Db, starter: DispatchStarter
+) -> Dispatch:
+    """Start a dispatch with this many claim agents at once, by asking the service."""
+    return runs.get_dispatch(conn, starter(body.concurrency))
 
 
 @router.post("/api/runs/dispatch", operation_id="create_dispatch", status_code=201)
