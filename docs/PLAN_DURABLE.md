@@ -214,12 +214,12 @@ The dashboard stays as it is apart from the sign-off. The end-to-end tests check
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes with at least 80% coverage, with tests for the new button, the in-progress state after a sign-off and the payment's sign-off line.
-- [ ] `npm run e2e` passes. A test signs off a $1,250 claim as Dana Whitfield on the dashboard, the stand-in receives one call for that claim, and the dashboard shows "Decided", the $1,250.00 payment and the handler without a reload. A test checks that a handler who cannot sign off sees the refusal and the stand-in receives nothing.
-- [ ] `npm run e2e` leaves `backend/undercover.db` and Supabase untouched, and never reaches port 8002.
+- [x] `npm run check:ts` passes with at least 80% coverage, with tests for the new button, the in-progress state after a sign-off and the payment's sign-off line.
+- [x] `npm run e2e` passes. A test signs off a $1,250 claim as Dana Whitfield on the dashboard, the stand-in receives one call for that claim, and the dashboard shows "Decided", the $1,250.00 payment and the handler without a reload. A test checks that a handler who cannot sign off sees the refusal and the stand-in receives nothing.
+- [x] `npm run e2e` leaves `backend/undercover.db` and Supabase untouched, and never reaches port 8002.
 - [ ] In the browser (Playwright MCP) against the dev servers on SQLite and the stand-in's port, a sign-off shows "In progress" and then the payment, in light and dark mode.
-- [ ] `docs/SPEC.md`, `docs/TECH_STACK.md`, `docs/PROCESS.md` and `docs/STATUS.md` describe the product as it now is, and the Rules in `docs/SPEC.md` are unchanged.
-- [ ] `npm run check` passes in full with `.env` moved out of the way, so it needs no Supabase, Langfuse or OpenRouter.
+- [x] `docs/SPEC.md`, `docs/TECH_STACK.md`, `docs/PROCESS.md` and `docs/STATUS.md` describe the product as it now is, and the Rules in `docs/SPEC.md` are unchanged.
+- [x] `npm run check` passes in full with `.env` moved out of the way, so it needs no Supabase, Langfuse or OpenRouter.
 
 ## Phase 6: Live check and wrap-up
 

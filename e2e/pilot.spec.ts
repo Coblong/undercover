@@ -1,4 +1,19 @@
-import { expect, test } from "@playwright/test";
+import { type APIRequestContext, expect, test } from "@playwright/test";
+
+interface Call {
+  claim_id: string;
+  thread_id: string;
+}
+
+/** The calls the stand-in for the agent's service has had for one claim. */
+async function received(
+  request: APIRequestContext,
+  claimId: string,
+): Promise<Call[]> {
+  const response = await request.get("http://127.0.0.1:8003/received");
+  const calls = (await response.json()) as Call[];
+  return calls.filter((call) => call.claim_id === claimId);
+}
 
 const decision = (kind: string, payout: number, explanation: string) => ({
   decision: kind,
@@ -46,16 +61,25 @@ test("a large payout is blocked until a handler signs off", async ({
   await expect(claim.getByText(/^Paid /)).toHaveCount(0);
 
   await claim.getByLabel("Handler").selectOption({ label: "Dana Whitfield" });
-  await claim
-    .getByRole("button", { name: "Sign off and pay $1,250.00" })
-    .click();
+  await claim.getByRole("button", { name: "Sign off $1,250.00" }).click();
 
   await expect(claim.getByText("Signed off by Dana Whitfield")).toBeVisible();
-  await expect(claim.getByText(/^Paid/)).toContainText("$1,250.00");
+  await expect(claim.getByText("In progress").first()).toBeVisible();
+  await expect(claim.getByText(/^Paid/)).toContainText("$1,250.00", {
+    timeout: 15_000,
+  });
   await expect(claim.getByRole("form", { name: "Sign-off" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /CLM-1008/ })).toContainText(
     "Decided",
   );
+
+  const calls = await received(request, "CLM-1008");
+  expect(calls).toHaveLength(1);
+  expect(calls[0]?.thread_id).toMatch(/^CLM-1008-/);
+  const paid = (await (await request.get("/api/claims/CLM-1008")).json()) as {
+    payment: { signed_off_by: string };
+  };
+  expect(paid.payment.signed_off_by).toBe("HND-01");
 });
 
 test("a decline shows its reasons and offers nothing to pay", async ({

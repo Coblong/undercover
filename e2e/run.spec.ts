@@ -127,9 +127,13 @@ test("a refused sign-off says why", async ({ page, request }) => {
   await page.getByRole("button", { name: /CLM-1015/ }).click();
   const claim = page.getByRole("article", { name: "Claim CLM-1015" });
   await claim.getByLabel("Handler").selectOption({ label: "Priya Raman" });
-  await claim.getByRole("button", { name: /Sign off and pay/ }).click();
+  await claim.getByRole("button", { name: /Sign off/ }).click();
   await expect(claim.getByRole("alert")).toHaveText(
     "Could not sign off this claim: Priya Raman cannot sign off payouts over the limit",
   );
   await expect(claim.getByText("Waiting for sign-off").first()).toBeVisible();
+  const calls = (await (
+    await request.get("http://127.0.0.1:8003/received")
+  ).json()) as { claim_id: string }[];
+  expect(calls.filter((call) => call.claim_id === "CLM-1015")).toHaveLength(0);
 });

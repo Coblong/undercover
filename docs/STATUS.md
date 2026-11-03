@@ -1,17 +1,19 @@
 # Status
 
-The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent. The harness build, following `docs/PLAN_HARNESS.md`, has the agent run the queue from a to-do list, hand each claim to a fresh claim agent, look up the wording and the claims manual by section, and recover from failures.
+The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent. The harness build, following `docs/PLAN_HARNESS.md`, has the agent run the queue from a to-do list, hand each claim to a fresh claim agent, look up the wording and the claims manual by section, and recover from failures. The durable build, following `docs/PLAN_DURABLE.md`, adds the payout rules, tracing in Langfuse, the records on Supabase, a claim agent that waits for a sign-off and carries on, and work that survives a restart.
 
 ## Run it
 
 - `uv sync` and `npm install`. Put `OPENROUTER_API_KEY` in `.env`. Set `MODEL_NAME` to use another model, such as `openrouter/free`.
-- Settings are read from the environment when needed (`agent/settings.py`): `BACKEND_URL` (default http://localhost:8000, the address the agent uses to reach the backend, so set it if the backend is on another port), `OPENROUTER_API_KEY` and `MODEL_NAME`. A real environment variable beats `.env`. `npm run dev` starts the backend on port 8000 with `--env-file .env`; `uv run -m agent` loads `.env` itself.
+- Put `DATABASE_URL` (the Supabase session pooler connection string), `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` in `.env` too. Without the Langfuse keys nothing is traced. The agent's service needs `DATABASE_URL`.
+- Settings are read from the environment when needed (`agent/settings.py`): `BACKEND_URL` (default http://localhost:8000, the address the agent uses to reach the backend, so set it if the backend is on another port), `UNDERCOVER_AGENT` (default http://127.0.0.1:8002, the address of the agent's service, which the backend calls), `DATABASE_URL`, the Langfuse keys, `OPENROUTER_API_KEY` and `MODEL_NAME`. A real environment variable beats `.env`. `npm run dev` starts the backend and the agent's service with `--env-file .env`; `uv run -m agent` loads `.env` itself.
 - Tracing: with `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` set, each claim's work is traced in Langfuse as one session named for the claim's thread (such as `CLM-1004-c598a7fa`). Langfuse's sessions endpoint is gone for new organizations; read a session through `GET /api/public/v2/observations` with a `sessionId` filter.
 - Logs: the backend logs to the terminal. A crashed run is logged with its traceback, and each ended attempt logs one line (claim, run, state, failed, seconds). The team sees only the kind of error in a step.
 - `npm run dev` starts the backend (port 8000), the agent's service (port 8002) and the dashboard (port 5173, open http://localhost:5173).
 - The database: with `DATABASE_URL` in the backend's environment (`npm run dev` passes `.env`) the backend uses Supabase, with all its tables in the `undercover` schema; without it, SQLite in `backend/undercover.db` (git-ignored). The tests and the end-to-end tests never set it. Either way the tables are created and seeded from `data/` on first start. `npm run seed` starts again from the seed data on whichever database is in use (Supabase when `.env` has `DATABASE_URL`): stop the backend first. The backend holds at most 4 connections. For a trial with the real model, reseed first and cap the run at five claims.
-- Run the agent from the command line while the backend runs: `uv run -m agent` works every waiting claim as one run, `uv run -m agent --limit 5` works at most five and leaves the rest waiting, and `uv run -m agent CLM-1001` works one claim. The dashboard has "Run the queue" (a number of claims) and, on a waiting claim, "Run agent".
-- `npm run check` runs every check: ruff, pyright and pytest at 80% coverage; ESLint, Prettier, tsc and vitest at 80% coverage; Playwright. `npm run e2e` runs only Playwright, on its own backend (port 8001), dashboard (port 5174) and a new database in the temp folder, so it never touches the dev database.
+- Run the agent from the command line while the backend and the agent's service run: `uv run -m agent` works every waiting claim as one run, `uv run -m agent --limit 5` works at most five and leaves the rest waiting, and `uv run -m agent CLM-1001` works one claim. A run first carries on any claim a stopped agent left in progress, or that was signed off while the agent was away, and takes over a run left going (`Carrying on run 3.`), keeping that run's limit. `uv run -m agent CLM-1001` carries on a stopped claim by name. The dashboard has "Run the queue" (a number of claims) and, on a waiting claim, "Run agent"; it does not offer a new run while one is left going, so use the command line to finish it.
+- A sign-off on the dashboard (a handler and "Sign off") is saved first. The claim is then in progress while the backend calls the agent's service, which resumes the claim's saved thread and pays it. If the service is not running the sign-off stands and the claim waits in progress for the next run.
+- `npm run check` runs every check: ruff, pyright and pytest at 80% coverage; ESLint, Prettier, tsc and vitest at 80% coverage; Playwright. `npm run e2e` runs only Playwright, on its own backend (port 8001), dashboard (port 5174), a stand-in for the agent's service (port 8003, `e2e/agent.mjs`, which records each call and pays the claim) and a new SQLite database in the temp folder, so it never touches the dev database, Supabase or the real service. `npm run check` is green with `.env` moved out of the way: the tests set `DATABASE_URL`, the Langfuse keys and `UNDERCOVER_AGENT` to values that reach nothing.
 
 ## What is built
 
@@ -46,9 +48,13 @@ After the quality build (`docs/PLAN_QUALITY.md`) the same run, reseeded and capp
 
 ## Open items
 
-- Payouts may vary between runs of the same claim, because the model does the arithmetic. Scoring the agent against `data/evals/` and any fix for the arithmetic are for a later build.
+- Payouts may vary between runs of the same claim, because the model chooses the lines it sends to `calculate_payout`. Scoring the agent against `data/evals/` is for a later build.
 - The claim agent reads many sections for each claim (10 to 14 in the live check), more than the instructions strictly need. Narrowing that would cut cost.
 - A claim left for a handler stays there: handlers have no way yet to return it to the queue or decide it from the dashboard.
+- A handler can only sign off a held payout. Rejecting it, and the note back to the agent, are for a later build.
+- A stopped run shows as Running on the dashboard until the next run takes it over from the command line.
+- Several tool failures are returned to the model as text rather than retried (the graph's retry policy covers the model; `call` retries a connection that fails).
+- The `undercover` tables on Supabase have row level security off. The schema is not one the Supabase API serves, but turn it on with policies before anything else reads them.
 - The Instructions view shows the Markdown marks as they are written.
 - Claims are worked one at a time. Several at once is not built.
 - Sign-in, real payments and messages to customers are not built, as the spec says.

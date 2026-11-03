@@ -17,9 +17,16 @@ export default defineConfig({
       env: {
         UNDERCOVER_DB: databasePath(),
         DATABASE_URL: "",
+        UNDERCOVER_AGENT: "http://127.0.0.1:8003",
         BACKEND_URL: "http://127.0.0.1:8001",
       },
       url: "http://127.0.0.1:8001/api/health",
+      reuseExistingServer: false,
+    },
+    {
+      command: "node e2e/agent.mjs",
+      env: { BACKEND_URL: "http://127.0.0.1:8001" },
+      url: "http://127.0.0.1:8003/health",
       reuseExistingServer: false,
     },
     {

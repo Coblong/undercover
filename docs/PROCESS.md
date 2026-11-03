@@ -1,8 +1,8 @@
 # Process
 
-`uv sync` and `npm install` at the repo root install everything, including a git pre-commit hook. `npm run dev` starts the backend and the dashboard.
+`uv sync` and `npm install` at the repo root install everything, including a git pre-commit hook. `npm run dev` starts the backend, the agent's service and the dashboard; the backend and the service need `.env` for Supabase and Langfuse. `npm run seed` starts again from the seed data on the database in use.
 
-`npm run check` runs every check:
+`npm run check` runs every check, and is green with `.env` moved out of the way, since the tests need no Supabase, Langfuse or OpenRouter:
 
 - Python: ruff (lint and format), pyright, and pytest with 80% coverage
 - TypeScript: ESLint, Prettier, tsc, and vitest with 80% coverage
@@ -31,7 +31,8 @@ When the last phase is done, run `npm run check` and report the results.
 
 ## Rules
 
-- Add tests with each change. Tests never call a model; use a stub model.
+- Add tests with each change. Tests never call a model; use a stub model. Tests never reach Supabase, Langfuse or the agent's service either: the graph's tests use an in-memory checkpointer.
+- For a live run with the real model, reseed first (`npm run seed`) and cap the run at five claims.
 - Outside a plan, commit each change once you have checked it.
 - Run `npm run check` before you hand work over.
 - Never use `git commit --no-verify`.
