@@ -9,6 +9,7 @@ from sqlalchemy import Connection
 from backend import attempts as attempt_rules
 from backend.db import connect
 from backend.main import app
+from backend.work import AgentStopped, AgentUnreachable
 from conftest import Agents
 
 Runner = Callable[[str, str], str]
@@ -80,9 +81,9 @@ def test_an_approval_that_was_not_paid_is_retried_and_paid_once(
         return "done"
 
     def pay_only(claim_id: str, thread_id: str) -> str:
-        assert decide(client, "approve", 420).status_code == 409
+        assert decide(client, "approve", 420).status_code == 200
         assert pay(client, 420).status_code == 200
-        assert pay(client, 420).status_code == 409
+        assert pay(client, 420).json()["message"] == "Already paid $420.00."
         return "done"
 
     run_with(agents, client, approve_only)
@@ -125,18 +126,56 @@ def test_a_claim_left_for_a_handler_cannot_be_worked(
     assert state(client, "CLM-1002") == "waiting"
 
 
-def test_startup_settles_a_claim_left_in_progress(client: TestClient):
-    with sqlite3.connect(os.environ["UNDERCOVER_DB"]) as conn:
-        conn.execute(
-            "UPDATE claims SET state = 'in_progress' WHERE claim_id = 'CLM-1001'"
-        )
-        conn.execute(
-            "INSERT INTO attempts (claim_id, started_at) VALUES ('CLM-1001', 'then')"
-        )
+def test_a_stopped_attempt_stays_open_and_the_next_run_carries_it_on(
+    client: TestClient, agents: Agents
+):
+    threads: list[str] = []
+
+    def stopped(claim_id: str, thread_id: str) -> str:
+        threads.append(thread_id)
+        raise AgentStopped("the service went away")
+
+    def carry_on(claim_id: str, thread_id: str) -> str:
+        threads.append(thread_id)
+        decide(client, "decline", 0)
+        return "done"
+
+    run_with(agents, client, stopped)
+    assert state(client) == "in_progress"
+    assert attempts() == [None]
+    assert errors(client) == []
     with TestClient(app) as restarted:
-        assert state(restarted) == "waiting"
-        assert errors(restarted) == ["The backend stopped during this attempt."]
-    assert attempts() == [1]
+        assert state(restarted) == "in_progress"
+    assert run_with(agents, client, carry_on).status_code == 202
+    assert threads[0] == threads[1]
+    assert state(client) == "decided"
+    assert attempts() == [0]
+
+
+def test_a_claim_being_worked_cannot_be_carried_on_again(
+    client: TestClient, agents: Agents
+):
+    seen: dict[str, int] = {}
+
+    def runner(claim_id: str, thread_id: str) -> str:
+        seen["again"] = client.post("/api/claims/CLM-1001/run").status_code
+        decide(client, "decline", 0)
+        return "done"
+
+    run_with(agents, client, runner)
+    assert seen["again"] == 409
+
+
+def test_an_agent_that_cannot_be_reached_gives_the_claim_back(
+    client: TestClient, agents: Agents
+):
+    def unreachable(claim_id: str, thread_id: str) -> str:
+        raise AgentUnreachable("no service")
+
+    run_with(agents, client, unreachable)
+    assert state(client) == "waiting"
+    assert attempts() == []
+    assert errors(client) == ["The agent's service could not be reached."]
 
 
 def test_a_failure_inside_end_attempt_changes_nothing(
@@ -148,7 +187,6 @@ def test_a_failure_inside_end_attempt_changes_nothing(
     def fail(conn: Connection, claim_id: str) -> int:
         raise RuntimeError("database is locked")
 
-    real = attempt_rules.failed_attempts
     monkeypatch.setattr(attempt_rules, "failed_attempts", fail)
     with pytest.raises(RuntimeError):
         attempt_rules.end_attempt(conn, "CLM-1001", "The agent crashed.")
@@ -156,8 +194,3 @@ def test_a_failure_inside_end_attempt_changes_nothing(
     assert state(client) == "in_progress"
     assert errors(client) == []
     assert attempts() == [None]
-    monkeypatch.setattr(attempt_rules, "failed_attempts", real)
-    with TestClient(app) as restarted:
-        assert state(restarted) == "waiting"
-        assert errors(restarted) == ["The backend stopped during this attempt."]
-    assert attempts() == [1]

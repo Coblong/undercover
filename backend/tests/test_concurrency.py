@@ -70,19 +70,35 @@ def database(
     init_db()
 
 
-def test_one_payment_wins(database: None):
+def test_a_payment_made_at_once_is_made_once(database: None):
     on_own_connection(lambda c: decisions.decide(c, "CLM-1001", decision()))
-    exactly_one_winner(
-        race(lambda c: decisions.pay(c, "CLM-1001", PaymentRequest(amount=420)))
-    )
+    results = race(lambda c: decisions.pay(c, "CLM-1001", PaymentRequest(amount=420)))
+    assert all(not isinstance(r, int | str) for r in results), results
     count = on_own_connection(
         lambda c: c.execute(text("SELECT COUNT(*) FROM payments")).scalar_one()
     )
     assert count == 1
 
 
-def test_one_decision_wins(database: None):
-    exactly_one_winner(race(lambda c: decisions.decide(c, "CLM-1001", decision())))
+def test_a_decision_made_at_once_is_recorded_once(database: None):
+    results = race(lambda c: decisions.decide(c, "CLM-1001", decision()))
+    assert all(not isinstance(r, int | str) for r in results), results
+    count = on_own_connection(
+        lambda c: c.execute(text("SELECT COUNT(*) FROM decisions")).scalar_one()
+    )
+    assert count == 1
+
+
+def test_one_of_several_different_decisions_wins(database: None):
+    payouts = iter(range(100, 100 + THREADS))
+    lock = threading.Lock()
+
+    def decide_differently(conn: Connection) -> Any:
+        with lock:
+            payout = next(payouts)
+        return decisions.decide(conn, "CLM-1001", decision(payout=payout))
+
+    exactly_one_winner(race(decide_differently))
 
 
 def test_one_sign_off_wins(database: None):

@@ -1,14 +1,14 @@
 """Steps and attempts: what the agent did on a claim, and how its work ended."""
 
 from typing import Literal
+from uuid import uuid4
 
 from fastapi import HTTPException
-from sqlalchemy import Connection, func, insert, select, update
+from sqlalchemy import Connection, delete, func, insert, select, update
 
 from backend import queries, runs
 from backend import tables as t
 from backend.db import now, payout_limit, transaction
-from backend.decisions import settled_state
 from backend.models import Outcome, State, Step, StepRequest
 
 MAX_FAILED_ATTEMPTS = 2
@@ -19,6 +19,18 @@ UNFINISHED_TEXT: dict[Unfinished, str] = {
     "not_decided": "The agent finished without deciding the claim.",
     "not_paid": "The agent approved the claim but did not pay it.",
 }
+
+
+def settled_state(decision: str, payout: float) -> State:
+    """Return the state a claim rests in once it has this decision."""
+    if decision == "approve" and payout > payout_limit():
+        return "waiting_for_sign_off"
+    return "decided"
+
+
+def new_thread(claim_id: str) -> str:
+    """Name a thread for a claim: the claim id and a few random characters."""
+    return f"{claim_id}-{uuid4().hex[:8]}"
 
 
 def record_step(conn: Connection, claim_id: str, body: StepRequest) -> Step:
@@ -68,7 +80,10 @@ def start_attempt(
         )
         conn.execute(
             insert(t.attempts).values(
-                claim_id=claim_id, run_id=run_id, started_at=now()
+                claim_id=claim_id,
+                run_id=run_id,
+                started_at=now(),
+                thread_id=new_thread(claim_id),
             )
         )
     return Outcome(
@@ -76,23 +91,80 @@ def start_attempt(
     )
 
 
+def open_thread(conn: Connection, claim_id: str) -> str | None:
+    """Return the thread of a claim's open attempt, or None if it has none."""
+    return conn.execute(
+        select(t.attempts.c.thread_id).where(
+            t.attempts.c.claim_id == claim_id, t.attempts.c.failed.is_(None)
+        )
+    ).scalar_one_or_none()
+
+
+def open_resume_attempt(conn: Connection, claim_id: str) -> None:
+    """Open an attempt on a claim's last thread. The caller holds the transaction."""
+    last = conn.execute(
+        select(t.attempts.c.thread_id)
+        .where(t.attempts.c.claim_id == claim_id)
+        .order_by(t.attempts.c.id.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    conn.execute(
+        insert(t.attempts).values(
+            claim_id=claim_id,
+            started_at=now(),
+            thread_id=last or new_thread(claim_id),
+        )
+    )
+
+
+def carry_on(conn: Connection, claim_id: str) -> Outcome:
+    """Check that a claim in progress has an open attempt to carry on, or refuse."""
+    with transaction(conn):
+        state = queries.claim_state(conn, claim_id, lock=True)
+        if state != "in_progress" or open_thread(conn, claim_id) is None:
+            raise HTTPException(
+                409, f"Claim {claim_id} is {state}, so there is no work to carry on"
+            )
+    return Outcome(
+        claim_id=claim_id, state="in_progress", message="The agent carries on."
+    )
+
+
+def stopped_claims(conn: Connection) -> list[str]:
+    """Return the claims left in progress with an attempt still open."""
+    rows = conn.execute(
+        select(t.claims.c.claim_id)
+        .join(t.attempts, t.attempts.c.claim_id == t.claims.c.claim_id)
+        .where(t.claims.c.state == "in_progress", t.attempts.c.failed.is_(None))
+        .order_by(t.claims.c.claim_id)
+    )
+    return [row.claim_id for row in rows]
+
+
+def release(conn: Connection, claim_id: str, problem: str) -> None:
+    """Take back an attempt that never reached the agent, without counting it."""
+    with transaction(conn):
+        queries.claim_state(conn, claim_id, lock=True)
+        conn.execute(
+            delete(t.attempts).where(
+                t.attempts.c.claim_id == claim_id, t.attempts.c.failed.is_(None)
+            )
+        )
+        record_step(conn, claim_id, StepRequest(kind="error", text=problem))
+        conn.execute(
+            update(t.claims)
+            .where(t.claims.c.claim_id == claim_id)
+            .values(state="waiting")
+        )
+
+
 def unfinished(conn: Connection, claim_id: str) -> Unfinished | None:
     """Say what is missing from a claim's work, or None when it is complete."""
-    decision = conn.execute(
-        select(t.decisions.c.decision, t.decisions.c.payout).where(
-            t.decisions.c.claim_id == claim_id
-        )
-    ).first()
-    if decision is None:
+    claim = queries.get_claim(conn, claim_id)
+    if claim.decision is None:
         return "not_decided"
-    paid = conn.execute(
-        select(t.payments.c.claim_id).where(t.payments.c.claim_id == claim_id)
-    ).first()
-    if (
-        decision.decision == "approve"
-        and decision.payout <= payout_limit()
-        and not paid
-    ):
+    payable = claim.decision.payout <= payout_limit() or claim.sign_off is not None
+    if claim.decision.decision == "approve" and payable and claim.payment is None:
         return "not_paid"
     return None
 
@@ -117,12 +189,8 @@ def end_attempt(conn: Connection, claim_id: str, error: str | None) -> State:
         )
         new_state: State
         if reason is None:
-            decision = conn.execute(
-                select(t.decisions.c.decision, t.decisions.c.payout).where(
-                    t.decisions.c.claim_id == claim_id
-                )
-            ).one()
-            new_state = settled_state(decision.decision, decision.payout)
+            needs = queries.get_claim(conn, claim_id).needs_sign_off
+            new_state = "waiting_for_sign_off" if needs else "decided"
         elif failed_attempts(conn, claim_id) >= MAX_FAILED_ATTEMPTS:
             record_step(
                 conn,
@@ -150,12 +218,3 @@ def failed_attempts(conn: Connection, claim_id: str) -> int:
         .select_from(t.attempts)
         .where(t.attempts.c.claim_id == claim_id, t.attempts.c.failed.is_(True))
     ).scalar_one()
-
-
-def recover(conn: Connection) -> None:
-    """Settle claims left in progress by a backend that stopped."""
-    stuck = conn.execute(
-        select(t.claims.c.claim_id).where(t.claims.c.state == "in_progress")
-    ).all()
-    for row in stuck:
-        end_attempt(conn, row.claim_id, "The backend stopped during this attempt.")

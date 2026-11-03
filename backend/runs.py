@@ -52,6 +52,23 @@ def create(conn: Connection, limit: int) -> Run:
     return get_run(conn, run_id)
 
 
+def start(conn: Connection, limit: int, live: frozenset[int]) -> Run:
+    """Start a run, or take over the one a stopped agent left going.
+
+    A run that no process is working has been stopped. The new run finishes it,
+    with its own limit, to-do list and claims. A run still being worked is a 409.
+    """
+    with transaction(conn):
+        stopped = conn.execute(
+            select(t.runs.c.id).where(t.runs.c.state == "running").with_for_update()
+        ).scalar_one_or_none()
+    if stopped is None:
+        return create(conn, limit)
+    if stopped in live:
+        raise HTTPException(409, "A run is already going")
+    return get_run(conn, stopped)
+
+
 def running_run(conn: Connection, run_id: int, lock: bool = False) -> Run:
     """Return a run that is still going, or raise a 409."""
     run = get_run(conn, run_id, lock)
@@ -157,10 +174,3 @@ def close_if_running(conn: Connection, run_id: int, error: str | None) -> None:
                 "failed",
                 error or "The agent stopped without finishing.",
             )
-
-
-def recover(conn: Connection) -> None:
-    """Fail the runs left going by a backend that stopped."""
-    running = conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).all()
-    for row in running:
-        end(conn, row.id, "failed", "The backend stopped during this run.")

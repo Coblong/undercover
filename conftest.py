@@ -13,15 +13,12 @@ from backend.main import app
 def isolated_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Keep every test off Supabase, Langfuse and the real agent service.
 
-    The values are empty, not removed, so that loading `.env` does not add them.
+    The values are set, not removed, so that loading `.env` does not replace them.
+    Port 9 refuses connections, so a test that reaches for the service fails at once.
     """
-    for name in (
-        "DATABASE_URL",
-        "LANGFUSE_PUBLIC_KEY",
-        "LANGFUSE_SECRET_KEY",
-        "UNDERCOVER_AGENT",
-    ):
+    for name in ("DATABASE_URL", "LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY"):
         monkeypatch.setenv(name, "")
+    monkeypatch.setenv("UNDERCOVER_AGENT", "http://127.0.0.1:9")
     yield
     db.dispose_engines()
 

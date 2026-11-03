@@ -76,6 +76,7 @@ export interface ClaimDetail {
   incident_date: string;
   incident_location: string;
   items: Item[];
+  needs_sign_off: boolean;
   payment: Payment | null;
   policy_id: string;
   sign_off: SignOff | null;
@@ -159,6 +160,8 @@ export interface Outcome {
 export interface Payment {
   amount: number;
   paid_at: string;
+  signed_off_at: string | null;
+  signed_off_by: string | null;
 }
 
 export interface PaymentRequest {

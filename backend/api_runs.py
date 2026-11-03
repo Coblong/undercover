@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, BackgroundTasks
 
-from backend import attempts, runs, work
+from backend import attempts, queries, runs, work
 from backend.deps import ClaimAgent, Db, QueueAgent
 from backend.models import (
     FinishRunRequest,
@@ -21,18 +21,28 @@ def run_agent(
     claim_id: str, conn: Db, background: BackgroundTasks, agent: ClaimAgent
 ) -> Outcome:
     """Start the agent on a waiting claim."""
-    outcome = attempts.start_attempt(conn, claim_id)
-    background.add_task(work.execute_attempt, claim_id, None, agent)
+    resume = queries.claim_state(
+        conn, claim_id
+    ) == "in_progress" and not work.is_working(claim_id)
+    if resume:
+        outcome = attempts.carry_on(conn, claim_id)
+    else:
+        outcome = attempts.start_attempt(conn, claim_id)
+    background.add_task(work.execute_attempt, claim_id, None, agent, resume)
     return outcome
 
 
 @router.post("/api/runs", operation_id="start_run", status_code=202)
 def start_run(
-    body: StartRunRequest, conn: Db, background: BackgroundTasks, agent: QueueAgent
+    body: StartRunRequest,
+    conn: Db,
+    background: BackgroundTasks,
+    agent: QueueAgent,
+    claim: ClaimAgent,
 ) -> Run:
     """Start the queue agent on the waiting claims, up to a limit."""
-    run = runs.create(conn, body.limit)
-    background.add_task(work.execute_queue, run.run_id, agent)
+    run = runs.start(conn, body.limit, work.working_runs())
+    background.add_task(work.execute_queue, run.run_id, agent, claim)
     return run
 
 

@@ -2,15 +2,15 @@
 
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from backend import api_claims, api_runs, attempts, runs
-from backend.db import connect, init_db
+from backend import api_claims, api_runs
+from backend.db import init_db
 
 
 @asynccontextmanager
@@ -20,9 +20,6 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
     )
     init_db()
-    with closing(connect()) as conn:
-        attempts.recover(conn)
-        runs.recover(conn)
     yield
 
 

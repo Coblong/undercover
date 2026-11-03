@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
+DEFAULT_AGENT_URL = "http://127.0.0.1:8002"
 
 
 def load_environment(path: Path | None = None) -> None:
@@ -19,6 +20,11 @@ def load_environment(path: Path | None = None) -> None:
 def backend_url() -> str:
     """Return the address of the UnderCover backend."""
     return os.getenv("BACKEND_URL", DEFAULT_BACKEND_URL)
+
+
+def agent_url() -> str:
+    """Return the address of the agent's service."""
+    return os.getenv("UNDERCOVER_AGENT") or DEFAULT_AGENT_URL
 
 
 def model_name() -> str | None:

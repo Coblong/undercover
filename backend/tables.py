@@ -69,6 +69,8 @@ payments = Table(
     Column("claim_id", Text, ForeignKey("claims.claim_id"), primary_key=True),
     Column("amount", Float, nullable=False),
     Column("paid_at", Text, nullable=False),
+    Column("signed_off_by", Text, ForeignKey("handlers.handler_id")),
+    Column("signed_off_at", Text),
 )
 sign_offs = Table(
     "sign_offs",
@@ -95,6 +97,7 @@ attempts = Table(
     Column("claim_id", Text, ForeignKey("claims.claim_id"), nullable=False),
     Column("run_id", Integer, ForeignKey("runs.id")),
     Column("started_at", Text, nullable=False),
+    Column("thread_id", Text),
     Column("failed", Boolean),
     sqlite_autoincrement=True,
 )

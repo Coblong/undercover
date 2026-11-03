@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from agent import __main__ as cli
 from agent import main
-from backend import runs
+from backend import runs, work
 from backend.db import connect
 from conftest import Agents
 
@@ -98,7 +98,8 @@ def test_a_run_that_cannot_start_is_reported(
     capsys: pytest.CaptureFixture[str],
 ):
     with closing(connect()) as conn:
-        runs.create(conn, 1)
+        run_id = runs.create(conn, 1).run_id
+    monkeypatch.setattr(work, "working_runs", lambda: frozenset({run_id}))
     run_cli(monkeypatch)
     assert capsys.readouterr().out.startswith("Error 409: A run is already going")
 

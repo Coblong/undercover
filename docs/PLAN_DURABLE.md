@@ -162,16 +162,16 @@ Builds the backend's side: a repeat counts as done, a sign-off no longer pays, a
 
 Success criteria (every test uses a fake agent function and never a model):
 
-- [ ] A repeated decision returns the outcome and leaves one decision row. A different decision or payout on a decided claim is a 409.
-- [ ] A repeated payment returns the outcome and leaves one payment row. A payment of a different amount, and a payment over the limit with no sign-off, are still 409s with no payment created.
-- [ ] A sign-off by `HND-01` on a $1,250 claim records the handler and time, moves the claim to `in_progress`, creates no payment, opens an attempt on the same thread, and calls the agent once after the response. A second sign-off is a 409. A handler who cannot sign off is still a 403.
-- [ ] When the fake agent pays, the payment holds the handler and time, and the claim settles to `decided`.
-- [ ] When the agent cannot be reached after a sign-off, the sign-off stands, the claim stays `in_progress` with its attempt open, and no error step is recorded. A later `run_agent` carries on with the same thread.
-- [ ] A stopped attempt: after a simulated backend restart (`recover` and an empty registry), the claim is still `in_progress` with the same open attempt and thread. `run_agent` calls the agent again with that thread, the attempt count is unchanged, and the claim decides once.
-- [ ] An error: the fake agent raising ends the attempt, puts the claim back in `waiting` with an error step, and the next attempt gets a new thread. Two failed attempts leave it for a handler, as before.
-- [ ] A stopped run stays `running` after a restart. `start_run` returns it, rather than a second run, and carries on stopped claims before the queue agent. A run that is live still gets the 409.
-- [ ] `ClaimDetail.needs_sign_off` is true for an approval over the limit with no sign-off, and false after it, at the limit, and for a decline.
-- [ ] `npm run check:python` passes.
+- [x] A repeated decision returns the outcome and leaves one decision row. A different decision or payout on a decided claim is a 409.
+- [x] A repeated payment returns the outcome and leaves one payment row. A payment of a different amount, and a payment over the limit with no sign-off, are still 409s with no payment created.
+- [x] A sign-off by `HND-01` on a $1,250 claim records the handler and time, moves the claim to `in_progress`, creates no payment, opens an attempt on the same thread, and calls the agent once after the response. A second sign-off is a 409. A handler who cannot sign off is still a 403.
+- [x] When the fake agent pays, the payment holds the handler and time, and the claim settles to `decided`.
+- [x] When the agent cannot be reached after a sign-off, the sign-off stands, the claim stays `in_progress` with its attempt open, and no error step is recorded. A later `run_agent` carries on with the same thread.
+- [x] A stopped attempt: after a simulated backend restart (`recover` and an empty registry), the claim is still `in_progress` with the same open attempt and thread. `run_agent` calls the agent again with that thread, the attempt count is unchanged, and the claim decides once.
+- [x] An error: the fake agent raising ends the attempt, puts the claim back in `waiting` with an error step, and the next attempt gets a new thread. Two failed attempts leave it for a handler, as before.
+- [x] A stopped run stays `running` after a restart. `start_run` returns it, rather than a second run, and carries on stopped claims before the queue agent. A run that is live still gets the 409.
+- [x] `ClaimDetail.needs_sign_off` is true for an approval over the limit with no sign-off, and false after it, at the limit, and for a decline.
+- [x] `npm run check:python` passes.
 
 ## Phase 4: The graph and the agent's service
 

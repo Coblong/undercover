@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend import runs
+from backend import work as backend_work
 from backend.db import connect
 from backend.main import app
 from conftest import Agents
@@ -75,11 +76,15 @@ def test_a_queue_agent_that_crashes_fails_the_run(client: TestClient, agents: Ag
     )
 
 
-def test_a_run_needs_a_limit_and_only_one_runs_at_a_time(client: TestClient):
+def test_a_run_needs_a_limit_and_only_one_runs_at_a_time(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
     assert client.post("/api/runs", json={"limit": 0}).status_code == 422
     assert client.post("/api/runs", json={}).status_code == 422
     assert client.get("/api/runs/latest").json() is None
-    new_run(3)
+    run_id = new_run(3)
+    live = frozenset({run_id})
+    monkeypatch.setattr(backend_work, "working_runs", lambda: live)
     assert client.post("/api/runs", json={"limit": 5}).status_code == 409
 
 
@@ -217,12 +222,31 @@ def test_a_bad_to_do_status_and_a_finished_run_are_refused(client: TestClient):
     )
 
 
-def test_startup_fails_a_run_left_going(client: TestClient):
+def test_a_run_left_going_is_taken_over_by_the_next_start(
+    client: TestClient, declining: None, agents: Agents
+):
     run_id = new_run(5)
     with TestClient(app) as restarted:
-        run = restarted.get("/api/runs/latest").json()
-    assert run["run_id"] == run_id
-    assert run["state"] == "failed"
-    assert run["summary"] == "The backend stopped during this run."
+        assert restarted.get("/api/runs/latest").json()["state"] == "running"
+    seen: list[int] = []
+
+    def queue(started: int) -> None:
+        seen.append(started)
+        for number in range(1, 6):
+            work(client, started, f"CLM-100{number}")
+        finish(client, started, "Carried on.")
+
+    agents.queue(queue)
+    response = client.post("/api/runs", json={"limit": 2})
+    assert response.status_code == 202
+    assert response.json()["run_id"] == run_id
+    assert response.json()["limit"] == 5
+    assert seen == [run_id]
+    run = latest(client)
+    assert (run["run_id"], run["state"], run["summary"]) == (
+        run_id,
+        "finished",
+        "Carried on.",
+    )
     with sqlite3.connect(os.environ["UNDERCOVER_DB"]) as conn:
         assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1

@@ -1,9 +1,11 @@
 """Decisions, payments and sign-off, with the rules that protect payouts."""
 
+from typing import cast
+
 from fastapi import HTTPException
 from sqlalchemy import Connection, insert, select, update
 
-from backend import documents, queries
+from backend import attempts, documents, queries
 from backend import tables as t
 from backend.db import now, payout_limit, transaction
 from backend.models import (
@@ -18,13 +20,6 @@ from backend.models import (
 def money(amount: float) -> str:
     """Format an amount in US dollars."""
     return f"${amount:,.2f}"
-
-
-def settled_state(decision: str, payout: float) -> State:
-    """Return the state a claim rests in once it has this decision."""
-    if decision == "approve" and payout > payout_limit():
-        return "waiting_for_sign_off"
-    return "decided"
 
 
 def check_decision(body: DecisionRequest, payout: float, claimed: float) -> None:
@@ -48,24 +43,34 @@ def check_decision(body: DecisionRequest, payout: float, claimed: float) -> None
 def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
     """Record the decision on a claim that is waiting or in progress.
 
-    A claim the agent is working on stays in progress until its run ends.
+    A claim the agent is working on stays in progress until its attempt ends.
+    The same decision again counts as done; a different one is refused.
     """
     payout = round(body.payout, 2)
     with transaction(conn):
         state = queries.claim_state(conn, claim_id, lock=True)
+        recorded = conn.execute(
+            select(t.decisions.c.decision, t.decisions.c.payout).where(
+                t.decisions.c.claim_id == claim_id
+            )
+        ).first()
+        if recorded is not None:
+            if (recorded.decision, recorded.payout) != (body.decision, payout):
+                raise HTTPException(409, f"Claim {claim_id} already has a decision")
+            return Outcome(
+                claim_id=claim_id,
+                state=cast(State, state),
+                message=f"Decision already recorded: {body.decision}.",
+            )
         if state not in ("waiting", "in_progress"):
             raise HTTPException(
                 409, f"Claim {claim_id} is already {state}, so it cannot be decided"
             )
-        if conn.execute(
-            select(t.decisions.c.claim_id).where(t.decisions.c.claim_id == claim_id)
-        ).first():
-            raise HTTPException(409, f"Claim {claim_id} already has a decision")
         claimed = conn.execute(
             select(t.claims.c.amount_claimed).where(t.claims.c.claim_id == claim_id)
         ).scalar_one()
         check_decision(body, payout, claimed)
-        settled = settled_state(body.decision, payout)
+        settled = attempts.settled_state(body.decision, payout)
         new_state: State = "in_progress" if state == "in_progress" else settled
         conn.execute(
             insert(t.decisions).values(
@@ -94,7 +99,10 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
 
 
 def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
-    """Pay an approved claim, unless the payout is over the limit and not signed off."""
+    """Pay an approved claim, unless the payout is over the limit and not signed off.
+
+    The same payment again counts as done; a different one is refused.
+    """
     amount = round(body.amount, 2)
     with transaction(conn):
         queries.claim_state(conn, claim_id, lock=True)
@@ -109,7 +117,13 @@ def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
                 409, f"Claim {claim_id} has no approval, so there is nothing to pay"
             )
         if claim.payment is not None:
-            raise HTTPException(409, f"Claim {claim_id} has already been paid")
+            if amount != claim.payment.amount:
+                raise HTTPException(409, f"Claim {claim_id} has already been paid")
+            return Outcome(
+                claim_id=claim_id,
+                state=claim.state,
+                message=f"Already paid {money(amount)}.",
+            )
         if amount != claim.decision.payout:
             raise HTTPException(
                 409,
@@ -123,7 +137,13 @@ def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
                 " limit and a handler has not signed off",
             )
         conn.execute(
-            insert(t.payments).values(claim_id=claim_id, amount=amount, paid_at=now())
+            insert(t.payments).values(
+                claim_id=claim_id,
+                amount=amount,
+                paid_at=now(),
+                signed_off_by=claim.sign_off.handler_id if claim.sign_off else None,
+                signed_off_at=claim.sign_off.signed_off_at if claim.sign_off else None,
+            )
         )
     return Outcome(
         claim_id=claim_id, state=claim.state, message=f"Paid {money(amount)}."
@@ -131,7 +151,10 @@ def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
 
 
 def sign_off(conn: Connection, claim_id: str, body: SignOffRequest) -> Outcome:
-    """Record a handler's sign-off on a large payout and make the payment."""
+    """Record a handler's sign-off on a large payout and hand the claim to the agent.
+
+    The claim is in progress until the agent has paid it.
+    """
     with transaction(conn):
         state = queries.claim_state(conn, claim_id, lock=True)
         if state != "waiting_for_sign_off":
@@ -149,24 +172,19 @@ def sign_off(conn: Connection, claim_id: str, body: SignOffRequest) -> Outcome:
             raise HTTPException(
                 403, f"{handler.name} cannot sign off payouts over the limit"
             )
-        payout = conn.execute(
-            select(t.decisions.c.payout).where(t.decisions.c.claim_id == claim_id)
-        ).scalar_one()
         conn.execute(
             insert(t.sign_offs).values(
                 claim_id=claim_id, handler_id=body.handler_id, signed_off_at=now()
             )
         )
         conn.execute(
-            insert(t.payments).values(claim_id=claim_id, amount=payout, paid_at=now())
-        )
-        conn.execute(
             update(t.claims)
             .where(t.claims.c.claim_id == claim_id)
-            .values(state="decided")
+            .values(state="in_progress")
         )
+        attempts.open_resume_attempt(conn, claim_id)
     return Outcome(
         claim_id=claim_id,
-        state="decided",
-        message=f"{handler.name} signed off. Paid {money(payout)}.",
+        state="in_progress",
+        message=f"{handler.name} signed off. The agent will pay it.",
     )
