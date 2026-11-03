@@ -185,18 +185,18 @@ Builds the claim agent as the LangGraph graph in decision 2, the service around 
 
 Success criteria (tests use `InMemorySaver`, the stub model and the backend through `TestClient`):
 
-- [ ] An approval of $420: `decide_claim`, then `check`, then `pay`, in that order. The claim is paid once, the graph never called the limit, and the steps are recorded on the claim in order.
-- [ ] The pause: an approval of $1,250 stops at `approval`. The backend shows the claim `waiting_for_sign_off` with no payment, `get_state(...).next` is `("approval",)`, and the interrupt holds the claim id and the payout.
-- [ ] The resume: after the sign-off, the service resumes the thread with the handler. The claim is paid once, `decided`, with the handler and time on the payment. Resuming a second time does nothing and pays nothing.
-- [ ] The stop: breaking out of the stream after the first tool step and running again continues from that checkpoint. The first model call and its tools are not repeated, the attempt count is unchanged, and the claim has one decision.
-- [ ] The failure: a model that raises leaves the claim `waiting` with an error step, and the next attempt starts a fresh thread. A thread started on a claim that already has an approval of $420 goes `check -> pay` and makes no model call.
-- [ ] A refused call comes back to the model as text. The model may make 30 calls and the 31st raises. Model and tool failures are retried by the retry policy.
-- [ ] The tools: `pay_claim` is gone; `calculate_payout` stays bound to its claim; none takes a claim, policy or customer id.
-- [ ] The service starts a new thread, ignores a finished thread, and answers 409 to a second call on a thread that is running. Without `DATABASE_URL` it stops with a plain message.
-- [ ] The command line: a stopped claim and a stopped run are carried on first and reported. The existing command-line tests still pass.
-- [ ] A test asserts the agent still reads no files, and reaches the backend only over HTTP.
-- [ ] Live, one claim end to end on Supabase: `npm run dev` starts all three; a claim of $1,250 or more pauses with a row in `undercover.checkpoints` for its thread.
-- [ ] `npm run check:python` passes.
+- [x] An approval of $420: `decide_claim`, then `check`, then `pay`, in that order. The claim is paid once, the graph never called the limit, and the steps are recorded on the claim in order.
+- [x] The pause: an approval of $1,250 stops at `approval`. The backend shows the claim `waiting_for_sign_off` with no payment, `get_state(...).next` is `("approval",)`, and the interrupt holds the claim id and the payout.
+- [x] The resume: after the sign-off, the service resumes the thread with the handler. The claim is paid once, `decided`, with the handler and time on the payment. Resuming a second time does nothing and pays nothing.
+- [x] The stop: breaking out of the stream after the first tool step and running again continues from that checkpoint. The first model call and its tools are not repeated, the attempt count is unchanged, and the claim has one decision.
+- [x] The failure: a model that raises leaves the claim `waiting` with an error step, and the next attempt starts a fresh thread. A thread started on a claim that already has an approval of $420 goes `check -> pay` and makes no model call.
+- [x] A refused call comes back to the model as text. The model may make 30 calls and the 31st raises. Model and tool failures are retried by the retry policy.
+- [x] The tools: `pay_claim` is gone; `calculate_payout` stays bound to its claim; none takes a claim, policy or customer id.
+- [x] The service starts a new thread, ignores a finished thread, and answers 409 to a second call on a thread that is running. Without `DATABASE_URL` it stops with a plain message.
+- [x] The command line: a stopped claim and a stopped run are carried on first and reported. The existing command-line tests still pass.
+- [x] A test asserts the agent still reads no files, and reaches the backend only over HTTP.
+- [x] Live, one claim end to end on Supabase: `npm run dev` starts all three; a claim of $1,250 or more pauses with a row in `undercover.checkpoints` for its thread.
+- [x] `npm run check:python` passes.
 
 ## Phase 5: The dashboard, the end-to-end tests and the documents
 

@@ -11,7 +11,7 @@ Use `list_document_sections` to see the sections of `wording` or `manual`, and `
 
 ## How to work a claim
 
-1. Get the claim with `get_claim`. Read the story, the items claimed and every document in full. If it already has a decision, do not decide it again: pay it if it is an approval of {approval_limit} or less with no payment, and then finish.
+1. Get the claim with `get_claim`. Read the story, the items claimed and every document in full. If it already has a decision, do not decide it again.
 2. Get its policy with `get_policy` and the customer's earlier claims with `get_claim_history`. Neither takes an id, since both are for your claim. The history lists every earlier claim, including ones still open.
 3. List the sections of the wording and of the manual. Then read:
    - the manual section on working a claim, which gives the order of work;
@@ -20,8 +20,7 @@ Use `list_document_sections` to see the sections of `wording` or `manual`, and `
    - the manual sections on documents, on repeat claims, and on any topic the claim touches, such as the interpretation notes, a story and documents that disagree, or meals without receipts.
 4. Check, in order: the event is inside the covered trip and the claim was filed within {filing_days} days; the benefit is covered for the plan and add-ons; the conditions of the benefit are met; no exclusion applies; the documents the manual requires are present and support the story; the customer's claim history.
 5. If you approve, work out the payout with `calculate_payout`: the benefit, each covered item or expense as a line (leave out what is excluded), and anything a carrier or anyone else has paid. Record the payout it returns in `decide_claim`.
-6. Record your decision with `decide_claim`.
-7. If you approved and the payout is {approval_limit} or less, you must pay it with `pay_claim`, for exactly the approved payout, before you finish. An approval that is not paid is not done.
+6. Record your decision with `decide_claim`. That is the end of your work: you have no tool to pay, because UnderCover pays an approval for you once it is recorded.
 
 ## Deciding
 
@@ -36,7 +35,7 @@ Follow the order in the wording and the manual: take the eligible amount of each
 
 ## Large payouts
 
-A payout over {approval_limit} needs a handler's sign-off. You may approve such a claim. Do not pay it: payment is blocked until a handler signs off. If a payment is refused, do not retry it. Say so in your final message.
+A payout over {approval_limit} needs a handler's sign-off. You may approve such a claim as you would any other. The claim then waits for a handler, and UnderCover pays it after the sign-off.
 
 ## The explanation
 
@@ -44,4 +43,4 @@ Give two or three plain sentences saying why you decided as you did, and name th
 
 ## Finish
 
-When you have decided the claim, reply with one line: the decision and the payout.
+Once `decide_claim` accepts your decision, you are finished. If it refuses it, read why and decide again.

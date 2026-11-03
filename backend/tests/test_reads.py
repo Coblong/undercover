@@ -102,7 +102,7 @@ def test_the_instructions_carry_the_numbers_from_company_data(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
     text = client.get("/api/instructions/claim").json()["text"]
-    assert "approval of $1,000 or less" in text
+    assert "A payout over $1,000 needs" in text
     assert "within 90 days" in text
     assert "filed 3 claims within 12 months" in text
 
@@ -113,7 +113,7 @@ def test_the_instructions_carry_the_numbers_from_company_data(
     }
     monkeypatch.setattr(instructions, "load", lambda name: changed)
     text = client.get("/api/instructions/claim").json()["text"]
-    assert "approval of $750 or less" in text
+    assert "A payout over $750 needs" in text
     assert "within 60 days" in text
     assert "filed 4 claims within 6 months" in text
 

@@ -1,32 +1,44 @@
-"""The UnderCover Agent."""
+"""The UnderCover Agent: the claim agent, a LangGraph graph that saves its progress."""
 
 import json
 import logging
 import time
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, TypedDict
 
 import httpx
-from langchain.agents import create_agent
-from langchain.agents.middleware import (
-    AgentMiddleware,
-    ModelCallLimitMiddleware,
-    ModelRetryMiddleware,
-    ToolRetryMiddleware,
-)
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    AnyMessage,
+    BaseMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+)
 from langchain_core.tools import BaseTool, tool
 from langchain_openai import ChatOpenAI
+from langgraph.checkpoint.base import BaseCheckpointSaver
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
+from langgraph.graph.state import CompiledStateGraph
+from langgraph.prebuilt import ToolNode
+from langgraph.types import Command, RetryPolicy, interrupt
 from pydantic import BaseModel, Field, SecretStr
 
 from agent import settings, tracing
+from agent.settings import AgentError
 
 logger = logging.getLogger(__name__)
+
+ClaimGraph = CompiledStateGraph["ClaimState", None, "ClaimState", "ClaimState"]
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
 STEP_LIMIT = 600
-CALL_LIMIT = 40
+CALL_LIMIT = 30
+RECURSION_LIMIT = 3 * CALL_LIMIT + 20
+MODEL_TRIES = 3
 RETRY_DELAY = 1.0
 CONNECT_TRIES = 3
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
@@ -181,11 +193,6 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
         }
         return call("POST", f"/api/claims/{claim_id}/payout", body)
 
-    @tool
-    def pay_claim(amount: float) -> str:
-        """Pay your approved claim exactly its approved payout."""
-        return call("POST", f"/api/claims/{claim_id}/payment", {"amount": amount})
-
     return [
         get_claim,
         get_policy,
@@ -194,7 +201,6 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
         get_document_section,
         calculate_payout,
         decide_claim,
-        pay_claim,
     ]
 
 
@@ -231,42 +237,190 @@ def steps_of(message: BaseMessage) -> list[tuple[str, str]]:
     return steps
 
 
-def run(claim_id: str, thread_id: str, llm: BaseChatModel | None = None) -> str:
-    """Run the agent on one claim, reporting each step, and return its final reply."""
+class ClaimState(TypedDict):
+    """What the graph keeps for one claim. The checkpointer saves it after each step."""
+
+    messages: Annotated[list[AnyMessage], add_messages]
+    claim_id: str
+    model_calls: int
+    stage: Literal["undecided", "done", "sign_off", "pay"]
+    payout: float
+    approved_by: str
+    reply: str
+
+
+def record(claim_id: str, messages: list[BaseMessage]) -> None:
+    """Post the steps of some messages to the claim for the team to see."""
+    for message in messages:
+        for kind, text in steps_of(message):
+            clipped = text if len(text) <= STEP_LIMIT else text[:STEP_LIMIT] + "..."
+            note(claim_id, kind, clipped)
+
+
+def note(claim_id: str, kind: str, text: str) -> None:
+    """Post one step to the claim."""
+    answer = call("POST", f"/api/claims/{claim_id}/steps", {"kind": kind, "text": text})
+    if answer.startswith("Error"):
+        logger.warning("Step not recorded on %s: %s", claim_id, answer)
+
+
+def money(amount: float) -> str:
+    """Format an amount in US dollars."""
+    return f"${amount:,.2f}"
+
+
+def fetch_claim(claim_id: str) -> dict[str, Any]:
+    """Read the claim from the backend, or stop with the reason it refused."""
+    answer = call("GET", f"/api/claims/{claim_id}")
+    if answer.startswith("Error"):
+        raise AgentError(answer)
+    return json.loads(answer)
+
+
+class ClaimNodes:
+    """The nodes and edges of the claim agent's graph, for one claim.
+
+    The agent and tools nodes are the loop `create_agent` runs. The check node
+    reads the claim from the backend, which alone knows whether a payout needs a
+    sign-off. The approval node waits for a handler and the pay node pays.
+    """
+
+    def __init__(self, claim_id: str, instructions: str, llm: BaseChatModel) -> None:
+        self.claim_id = claim_id
+        self.tools = claim_tools(claim_id)
+        self.model = llm.bind_tools(self.tools)
+        self.tool_node = ToolNode(self.tools, handle_tool_errors=True)
+        self.system_message = SystemMessage(instructions)
+
+    def agent(self, state: ClaimState) -> dict[str, Any]:
+        """Call the model with the conversation so far."""
+        message = self.model.invoke([self.system_message, *state["messages"]])
+        record(self.claim_id, [message])
+        return {"messages": [message], "model_calls": state["model_calls"] + 1}
+
+    def run_tools(self, state: ClaimState) -> dict[str, Any]:
+        """Run the tools the model asked for. A refusal comes back to it as text."""
+        result = self.tool_node.invoke(state)
+        record(self.claim_id, result["messages"])
+        return result
+
+    def check(self, state: ClaimState) -> dict[str, Any]:
+        """Read where the claim stands and decide what the graph does next."""
+        claim = fetch_claim(self.claim_id)
+        decision = claim["decision"]
+        if decision is None:
+            return {"stage": "undecided"}
+        payout = decision["payout"]
+        found = {"payout": payout, "reply": f"{decision['decision']} {payout:.2f}"}
+        if decision["decision"] != "approve" or claim["payment"] is not None:
+            return {"stage": "done", **found}
+        if claim["needs_sign_off"]:
+            note(
+                self.claim_id,
+                "message",
+                f"Waiting for a handler to sign off {money(payout)}.",
+            )
+            return {"stage": "sign_off", **found}
+        return {"stage": "pay", **found}
+
+    def approval(self, state: ClaimState) -> dict[str, Any]:
+        """Wait for a handler's sign-off. The thread resumes with the handler."""
+        answer = interrupt({"claim_id": self.claim_id, "payout": state["payout"]})
+        note(self.claim_id, "message", f"Signed off by {answer['handler_name']}.")
+        return {"approved_by": answer["handler_name"]}
+
+    def pay(self, state: ClaimState) -> dict[str, Any]:
+        """Pay the approved payout. The backend treats a repeat as done."""
+        body = {"amount": state["payout"]}
+        answer = call("POST", f"/api/claims/{self.claim_id}/payment", body)
+        if answer.startswith("Error"):
+            raise AgentError(f"the payment was refused: {answer}")
+        note(self.claim_id, "message", f"Paid {money(state['payout'])}.")
+        return {"reply": f"{state['reply']}, paid"}
+
+    @staticmethod
+    def after_agent(state: ClaimState) -> str:
+        """Run the tools the model asked for, or end if it asked for none."""
+        last = state["messages"][-1]
+        return "tools" if isinstance(last, AIMessage) and last.tool_calls else END
+
+    @staticmethod
+    def after_check(state: ClaimState) -> str:
+        """Go back to the model until the claim is decided, then pay or wait."""
+        if state["stage"] != "undecided":
+            return {"done": END, "sign_off": "approval", "pay": "pay"}[state["stage"]]
+        if state["model_calls"] >= CALL_LIMIT:
+            raise AgentError(f"the model was called {CALL_LIMIT} times")
+        return "agent"
+
+    def compile(self, checkpointer: BaseCheckpointSaver[Any]) -> ClaimGraph:
+        """Put the nodes and edges in a graph that saves its state after each step."""
+        retry = RetryPolicy(
+            max_attempts=MODEL_TRIES,
+            initial_interval=RETRY_DELAY,
+            jitter=False,
+            retry_on=Exception,
+        )
+        builder = StateGraph(ClaimState)
+        builder.add_node("agent", self.agent, retry_policy=retry)
+        builder.add_node("tools", self.run_tools)
+        builder.add_node("check", self.check)
+        builder.add_node("approval", self.approval)
+        builder.add_node("pay", self.pay)
+        builder.add_edge(START, "check")
+        builder.add_conditional_edges(
+            "check", self.after_check, ["agent", "approval", "pay", END]
+        )
+        builder.add_conditional_edges("agent", self.after_agent, ["tools", END])
+        builder.add_edge("tools", "check")
+        builder.add_edge("approval", "pay")
+        builder.add_edge("pay", END)
+        return builder.compile(checkpointer=checkpointer)
+
+
+def advance(graph: ClaimGraph, claim_id: str, config: dict[str, Any]) -> dict[str, Any]:
+    """Start, resume or carry on a thread, as its saved state says."""
+    snapshot = graph.get_state(config)  # pyright: ignore[reportArgumentType]
+    if not snapshot.values:
+        first: dict[str, Any] = {
+            "messages": [HumanMessage(f"Decide claim {claim_id}.")],
+            "claim_id": claim_id,
+            "model_calls": 0,
+            "stage": "undecided",
+            "payout": 0.0,
+            "approved_by": "",
+            "reply": "",
+        }
+        return graph.invoke(first, config, durability="sync")  # pyright: ignore[reportArgumentType]
+    if snapshot.interrupts:
+        sign_off = fetch_claim(claim_id)["sign_off"]
+        if sign_off is None:
+            return {"__interrupt__": snapshot.interrupts}
+        resume = Command(resume={"handler_name": sign_off["handler_name"]})
+        return graph.invoke(resume, config, durability="sync")  # pyright: ignore[reportArgumentType]
+    if snapshot.next:
+        return graph.invoke(None, config, durability="sync")  # pyright: ignore[reportArgumentType]
+    return snapshot.values
+
+
+def run(
+    claim_id: str,
+    thread_id: str,
+    llm: BaseChatModel | None = None,
+    checkpointer: BaseCheckpointSaver[Any] | None = None,
+) -> str:
+    """Work a claim on a thread, and return a line saying how far it got.
+
+    A new thread starts the claim. A thread that was stopped carries on from
+    its last saved step. A thread waiting for a sign-off resumes once the
+    backend has the sign-off, and otherwise stays as it is.
+    """
     instructions = json.loads(call("GET", "/api/instructions/claim"))["text"]
-    middleware: list[AgentMiddleware[Any, Any, Any]] = [
-        ModelRetryMiddleware(
-            initial_delay=RETRY_DELAY, jitter=False, on_failure="error"
-        ),
-        ToolRetryMiddleware(initial_delay=RETRY_DELAY, jitter=False),
-        ModelCallLimitMiddleware(run_limit=CALL_LIMIT),
-    ]
-    agent = create_agent(
-        llm or model(),
-        tools=claim_tools(claim_id),
-        system_prompt=instructions,
-        middleware=middleware,
-    )
-    reply = ""
-    for update in agent.stream(
-        {"messages": [{"role": "user", "content": f"Decide claim {claim_id}."}]},
-        config=tracing.config_for(thread_id),  # pyright: ignore[reportArgumentType]
-        stream_mode="updates",
-    ):
-        for node in update.values():
-            for message in (node or {}).get("messages", []):
-                for kind, text in steps_of(message):
-                    clipped = (
-                        text if len(text) <= STEP_LIMIT else text[:STEP_LIMIT] + "..."
-                    )
-                    answer = call(
-                        "POST",
-                        f"/api/claims/{claim_id}/steps",
-                        {"kind": kind, "text": clipped},
-                    )
-                    if answer.startswith("Error"):
-                        logger.warning("Step not recorded on %s: %s", claim_id, answer)
-                if isinstance(message, AIMessage):
-                    reply = message.text
-    tracing.flush()
-    return reply
+    nodes = ClaimNodes(claim_id, instructions, llm or model())
+    graph = nodes.compile(checkpointer or InMemorySaver())
+    config = {**tracing.config_for(thread_id), "recursion_limit": RECURSION_LIMIT}
+    try:
+        result = advance(graph, claim_id, config)
+    finally:
+        tracing.flush()
+    return "waiting for sign-off" if "__interrupt__" in result else result["reply"]

@@ -94,7 +94,7 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
             " until a handler signs off."
         )
     elif body.decision == "approve":
-        message += f" Now pay {money(payout)} with pay_claim."
+        message += f" {money(payout)} will be paid."
     return Outcome(claim_id=claim_id, state=new_state, message=message)
 
 

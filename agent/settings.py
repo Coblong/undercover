@@ -32,6 +32,17 @@ def model_name() -> str | None:
     return os.getenv("MODEL_NAME") or None
 
 
+def database_url() -> str:
+    """Return the Supabase connection string, or say clearly that it is missing."""
+    url = os.getenv("DATABASE_URL")
+    if not url:
+        raise AgentError(
+            "DATABASE_URL is not set. The agent saves its progress in Supabase:"
+            " put the connection string in .env or the environment"
+        )
+    return url
+
+
 def langfuse_configured() -> bool:
     """Say whether the Langfuse keys are set, so claims are traced."""
     return bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))

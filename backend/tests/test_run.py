@@ -105,7 +105,7 @@ def test_claim_stays_in_progress_until_the_run_ends(client: TestClient, agents: 
     agents.claim(runner)
     client.post("/api/claims/CLM-1001/run")
     assert during["decided"]["state"] == "in_progress"
-    assert "Now pay $420.00" in during["decided"]["message"]
+    assert "$420.00 will be paid" in during["decided"]["message"]
     assert during["state"] == "in_progress"
     assert during["again"] == 409
     assert during["paid"].status_code == 200
