@@ -172,6 +172,18 @@ class StepRequest(BaseModel):
     text: str = Field(max_length=20000)
 
 
+class ModelCallRequest(BaseModel):
+    run_id: int | None
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    cost: float = Field(ge=0, allow_inf_nan=False)
+
+
+class WorkTimeRequest(BaseModel):
+    run_id: int | None
+    seconds: float = Field(ge=0, allow_inf_nan=False)
+
+
 TodoStatus = Literal["to_do", "in_progress", "done", "left_for_handler"]
 
 

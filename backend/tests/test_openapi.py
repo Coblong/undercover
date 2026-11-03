@@ -17,6 +17,8 @@ OPERATIONS = {
     "calculate_payout",
     "sign_off_claim",
     "run_agent",
+    "record_model_call",
+    "record_work_time",
     "start_run",
     "get_latest_run",
     "write_todos",

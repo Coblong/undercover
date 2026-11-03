@@ -9,6 +9,7 @@ from backend import (
     instructions,
     payout,
     queries,
+    usage,
     work,
 )
 from backend.deps import ClaimAgent, Db
@@ -20,6 +21,7 @@ from backend.models import (
     DecisionRequest,
     DocumentName,
     Handler,
+    ModelCallRequest,
     Outcome,
     PaymentRequest,
     Policy,
@@ -29,6 +31,7 @@ from backend.models import (
     Step,
     StepRequest,
     Text,
+    WorkTimeRequest,
 )
 from backend.payout import Payout, PayoutRequest
 
@@ -135,3 +138,15 @@ def calculate_payout(claim_id: str, body: PayoutRequest, conn: Db) -> Payout:
     claim = queries.get_claim(conn, claim_id)
     policy = queries.get_policy(conn, claim.policy_id)
     return payout.work_out_payout(policy.model_dump(), body)
+
+
+@router.post("/api/claims/{claim_id}/model-calls", operation_id="record_model_call")
+def record_model_call(claim_id: str, body: ModelCallRequest, conn: Db) -> Outcome:
+    """Record the tokens and the cost of one model call on a claim."""
+    return usage.record_model_call(conn, claim_id, body)
+
+
+@router.post("/api/claims/{claim_id}/work-times", operation_id="record_work_time")
+def record_work_time(claim_id: str, body: WorkTimeRequest, conn: Db) -> Outcome:
+    """Record the seconds the agent spent working on a claim."""
+    return usage.record_work_time(conn, claim_id, body)

@@ -120,6 +120,33 @@ steps = Table(
     sqlite_autoincrement=True,
 )
 
+model_calls = Table(
+    "model_calls",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("claim_id", Text, ForeignKey("claims.claim_id"), nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id")),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    Column("cost", Float, nullable=False),
+    Column("created_at", Text, nullable=False),
+    sqlite_autoincrement=True,
+)
+work_times = Table(
+    "work_times",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("claim_id", Text, ForeignKey("claims.claim_id"), nullable=False),
+    Column("run_id", Integer, ForeignKey("runs.id")),
+    Column("seconds", Float, nullable=False),
+    Column("created_at", Text, nullable=False),
+    sqlite_autoincrement=True,
+)
+
+Index("model_calls_by_claim", model_calls.c.claim_id)
+Index("model_calls_by_run", model_calls.c.run_id)
+Index("work_times_by_claim", work_times.c.claim_id)
+Index("work_times_by_run", work_times.c.run_id)
 Index("steps_by_claim", steps.c.claim_id)
 Index("attempts_by_claim", attempts.c.claim_id)
 Index("attempts_by_run", attempts.c.run_id)

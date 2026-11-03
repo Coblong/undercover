@@ -151,6 +151,13 @@ export interface Line {
   quantity: number;
 }
 
+export interface ModelCallRequest {
+  cost: number;
+  input_tokens: number;
+  output_tokens: number;
+  run_id: number | null;
+}
+
 export interface Outcome {
   claim_id: string;
   message: string;
@@ -287,4 +294,9 @@ export interface WorkResult {
   claim_id: string;
   line: string;
   state: WorkResultState;
+}
+
+export interface WorkTimeRequest {
+  run_id: number | null;
+  seconds: number;
 }

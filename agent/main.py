@@ -34,13 +34,15 @@ logger = logging.getLogger(__name__)
 ClaimGraph = CompiledStateGraph["ClaimState", None, "ClaimState", "ClaimState"]
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "deepseek/deepseek-v4.1-flash"
+DEFAULT_MODEL = "openai/gpt-6-luna"
+DEFAULT_EFFORT = "low"
 STEP_LIMIT = 600
 CALL_LIMIT = 30
 RECURSION_LIMIT = 3 * CALL_LIMIT + 20
 MODEL_TRIES = 3
 RETRY_DELAY = 1.0
 CONNECT_TRIES = 3
+clock = time.monotonic
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
 
 
@@ -204,14 +206,20 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
     ]
 
 
-def model() -> ChatOpenAI:
-    """Return the model named in MODEL_NAME, or DeepSeek V4.1 Flash by default."""
+def model_choice() -> tuple[str, str]:
+    """Return the model and its reasoning effort ("none" when MODEL_NAME is set)."""
     name = settings.model_name()
+    return (name, "none") if name else (DEFAULT_MODEL, DEFAULT_EFFORT)
+
+
+def model() -> ChatOpenAI:
+    """Return the model named in MODEL_NAME, or GPT-6 Luna by default."""
+    name, effort = model_choice()
     return ChatOpenAI(
-        model=name or DEFAULT_MODEL,
+        model=name,
         base_url=OPENROUTER_BASE_URL,
         api_key=SecretStr(settings.api_key()),
-        reasoning_effort=None if name else "low",
+        reasoning_effort=None if effort == "none" else effort,
     )
 
 
@@ -285,8 +293,15 @@ class ClaimNodes:
     sign-off. The approval node waits for a handler and the pay node pays.
     """
 
-    def __init__(self, claim_id: str, instructions: str, llm: BaseChatModel) -> None:
+    def __init__(
+        self,
+        claim_id: str,
+        instructions: str,
+        llm: BaseChatModel,
+        run_id: int | None = None,
+    ) -> None:
         self.claim_id = claim_id
+        self.run_id = run_id
         self.tools = claim_tools(claim_id)
         self.model = llm.bind_tools(self.tools)
         self.tool_node = ToolNode(self.tools, handle_tool_errors=True)
@@ -295,8 +310,23 @@ class ClaimNodes:
     def agent(self, state: ClaimState) -> dict[str, Any]:
         """Call the model with the conversation so far."""
         message = self.model.invoke([self.system_message, *state["messages"]])
+        self.record_usage(message)
         record(self.claim_id, [message])
         return {"messages": [message], "model_calls": state["model_calls"] + 1}
+
+    def record_usage(self, message: BaseMessage) -> None:
+        """Record the tokens and OpenRouter's cost of a model reply with its run."""
+        tokens = message.usage_metadata if isinstance(message, AIMessage) else None
+        reported = (message.response_metadata.get("token_usage") or {}).get("cost")
+        body = {
+            "run_id": self.run_id,
+            "input_tokens": tokens["input_tokens"] if tokens else 0,
+            "output_tokens": tokens["output_tokens"] if tokens else 0,
+            "cost": reported or 0.0,
+        }
+        answer = call("POST", f"/api/claims/{self.claim_id}/model-calls", body)
+        if answer.startswith("Error"):
+            logger.warning("Model call not recorded on %s: %s", self.claim_id, answer)
 
     def run_tools(self, state: ClaimState) -> dict[str, Any]:
         """Run the tools the model asked for. A refusal comes back to it as text."""
@@ -403,24 +433,37 @@ def advance(graph: ClaimGraph, claim_id: str, config: dict[str, Any]) -> dict[st
     return snapshot.values
 
 
+def record_time(claim_id: str, run_id: int | None, seconds: float) -> None:
+    """Record the seconds the agent worked on a claim with its run."""
+    body = {"run_id": run_id, "seconds": seconds}
+    answer = call("POST", f"/api/claims/{claim_id}/work-times", body)
+    if answer.startswith("Error"):
+        logger.warning("Work time not recorded on %s: %s", claim_id, answer)
+
+
 def run(
     claim_id: str,
     thread_id: str,
     llm: BaseChatModel | None = None,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
+    run_id: int | None = None,
 ) -> str:
     """Work a claim on a thread, and return a line saying how far it got.
 
     A new thread starts the claim. A thread that was stopped carries on from
     its last saved step. A thread waiting for a sign-off resumes once the
-    backend has the sign-off, and otherwise stays as it is.
+    backend has the sign-off, and otherwise stays as it is. The graph's work is
+    timed and recorded with the run, a failed stretch included. A pause for a
+    sign-off ends the stretch, so the wait is never counted.
     """
     instructions = json.loads(call("GET", "/api/instructions/claim"))["text"]
-    nodes = ClaimNodes(claim_id, instructions, llm or model())
+    nodes = ClaimNodes(claim_id, instructions, llm or model(), run_id)
     graph = nodes.compile(checkpointer or InMemorySaver())
     config = {**tracing.config_for(thread_id), "recursion_limit": RECURSION_LIMIT}
+    started = clock()
     try:
         result = advance(graph, claim_id, config)
     finally:
+        record_time(claim_id, run_id, clock() - started)
         tracing.flush()
     return "waiting for sign-off" if "__interrupt__" in result else result["reply"]
