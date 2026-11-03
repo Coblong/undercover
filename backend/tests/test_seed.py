@@ -17,7 +17,6 @@ ALLOWED_FILES = {
     "policy_wording.md",
     "claims_manual.md",
     "instructions_claim.md",
-    "instructions_queue.md",
 }
 
 
@@ -63,7 +62,6 @@ def test_only_allowed_files_are_read(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "/api/documents/wording/sections/3",
             "/api/documents/manual/sections/3",
             "/api/instructions/claim",
-            "/api/instructions/queue",
         ):
             client.get(path)
         client.post(

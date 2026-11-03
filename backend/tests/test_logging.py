@@ -60,14 +60,3 @@ def test_every_ended_attempt_logs_one_line_with_its_fields(
     assert lines[0].startswith(
         "Attempt ended: claim=CLM-1001 run=None state=waiting failed=True seconds="
     )
-
-
-def test_a_queue_agent_crash_is_logged(
-    client: TestClient, caplog: pytest.LogCaptureFixture, agents: Agents
-):
-    def crash(run_id: int) -> None:
-        raise RuntimeError("x")
-
-    agents.queue(crash)
-    client.post("/api/runs", json={"limit": 1})
-    assert any("queue agent failed in run 1" in r.getMessage() for r in caplog.records)

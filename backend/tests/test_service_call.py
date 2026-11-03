@@ -44,3 +44,11 @@ def test_a_service_that_fails_is_an_error(monkeypatch: pytest.MonkeyPatch):
     answer(monkeypatch, httpx.Response(500, text="boom"))
     with pytest.raises(AgentError, match="boom"):
         work.call_service("CLM-1001", "t")
+
+
+def test_a_claim_the_service_is_already_working_is_a_stop_not_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    answer(monkeypatch, httpx.Response(409, json={"detail": "already being worked"}))
+    with pytest.raises(work.AgentStopped):
+        work.call_service("CLM-1001", "t")

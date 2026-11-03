@@ -48,17 +48,14 @@ def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> N
 
 
 class Agents:
-    """Replaces the agents the backend runs with ones that need no model."""
+    """Replaces the claim agent the backend runs with one that needs no model."""
 
     def claim(self, runner: work.ClaimAgent) -> None:
         app.dependency_overrides[work.claim_agent] = lambda: runner
 
-    def queue(self, runner: work.QueueAgent) -> None:
-        app.dependency_overrides[work.queue_agent] = lambda: runner
-
 
 @pytest.fixture
 def agents() -> Iterator[Agents]:
-    """Let a test choose what the claim agent and the queue agent do."""
+    """Let a test choose what the claim agent does."""
     yield Agents()
     app.dependency_overrides.clear()

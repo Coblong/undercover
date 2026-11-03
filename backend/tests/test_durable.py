@@ -3,12 +3,9 @@
 import os
 import sqlite3
 from collections.abc import Callable
-from contextlib import closing
 
 from fastapi.testclient import TestClient
 
-from backend import runs
-from backend.db import connect
 from backend.work import AgentStopped
 from conftest import Agents
 
@@ -157,57 +154,3 @@ def test_an_error_after_a_sign_off_starts_afresh_and_pays_once(
     assert claim(client, "CLM-1003")["state"] == "decided"
     with sqlite3.connect(os.environ["UNDERCOVER_DB"]) as conn:
         assert conn.execute("SELECT COUNT(*) FROM payments").fetchone()[0] == 1
-
-
-def test_a_run_carries_on_stopped_claims_before_the_queue_agent(
-    client: TestClient, agents: Agents
-):
-    def stopped(claim_id: str, thread_id: str) -> str:
-        raise AgentStopped("killed")
-
-    agents.claim(stopped)
-    client.post("/api/claims/CLM-1002/run")
-    thread = attempts("CLM-1002")[0][0]
-    order: list[str] = []
-
-    def carry_on(claim_id: str, thread_id: str) -> str:
-        order.append(f"claim {claim_id} {thread_id}")
-        client.post(
-            f"/api/claims/{claim_id}/decision",
-            json={
-                "decision": "decline",
-                "payout": 0,
-                "explanation": "Not covered.",
-                "policy_section": "9. General exclusions",
-            },
-        )
-        return "done"
-
-    def queue(run_id: int) -> None:
-        order.append("queue")
-        client.post(f"/api/runs/{run_id}/finish", json={"summary": "Done."})
-
-    agents.claim(carry_on)
-    agents.queue(queue)
-    response = client.post("/api/runs", json={"limit": 1})
-    assert response.status_code == 202
-    assert order == [f"claim CLM-1002 {thread}", "queue"]
-    assert claim(client, "CLM-1002")["state"] == "decided"
-    assert len(attempts("CLM-1002")) == 1
-
-
-def test_the_queue_agent_is_told_a_claim_was_stopped(
-    client: TestClient, agents: Agents
-):
-    def stopped(claim_id: str, thread_id: str) -> str:
-        raise AgentStopped("killed")
-
-    agents.claim(stopped)
-    with closing(connect()) as conn:
-        run_id = runs.create(conn, 1).run_id
-    work = client.post(f"/api/runs/{run_id}/claims/CLM-1001/work")
-    assert work.json()["state"] == "in_progress"
-    assert (
-        work.json()["line"]
-        == "CLM-1001 was stopped partway. The next run carries it on."
-    )

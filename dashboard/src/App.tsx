@@ -3,7 +3,6 @@ import { always, useApi } from "./api";
 import { ClaimView } from "./ClaimView";
 import { Instructions } from "./Instructions";
 import { Queue } from "./Queue";
-import { RunPanel } from "./RunPanel";
 import type { ClaimSummary } from "./types";
 
 type View = "claims" | "instructions";
@@ -43,9 +42,6 @@ export function App() {
         </main>
       ) : (
         <main className="layout">
-          <RunPanel
-            waiting={claims?.filter((c) => c.state === "waiting").length ?? 0}
-          />
           {claims ? (
             <Queue claims={claims} selected={selected} onSelect={setSelected} />
           ) : (

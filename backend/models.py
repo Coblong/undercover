@@ -140,12 +140,6 @@ class Step(BaseModel):
     created_at: str
 
 
-class WorkResult(BaseModel):
-    claim_id: str
-    state: State
-    line: str
-
-
 class Outcome(BaseModel):
     claim_id: str
     state: State
@@ -184,31 +178,75 @@ class WorkTimeRequest(BaseModel):
     seconds: float = Field(ge=0, allow_inf_nan=False)
 
 
-TodoStatus = Literal["to_do", "in_progress", "done", "left_for_handler"]
+RunState = Literal["running", "finished", "failed", "stopped"]
+Effort = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)
+]
 
 
-class Todo(BaseModel):
-    text: Label
-    status: TodoStatus
+class CreateDispatchRequest(BaseModel):
+    concurrency: int = Field(ge=1, le=25)
+    model: Label
+    reasoning_effort: Effort
 
 
-class Run(BaseModel):
+class EndRunRequest(BaseModel):
+    state: Literal["finished", "failed"]
+
+
+class EndAttemptRequest(BaseModel):
+    error: str | None = Field(max_length=2000)
+
+
+class RunClaims(BaseModel):
     run_id: int
-    limit: int
-    state: Literal["running", "finished", "failed"]
-    summary: str
+    claim_ids: list[str]
+
+
+class StartedClaim(BaseModel):
+    claim_id: str
+    thread_id: str
+    resumed: bool
+
+
+class StoppedRuns(BaseModel):
+    stopped: int
+
+
+class HeldPayout(BaseModel):
+    claim_id: str
+    payout: float
+
+
+class DispatchSummary(BaseModel):
+    approved: int
+    declined: int
+    referred: int
+    waiting_for_sign_off: list[HeldPayout]
+    left_for_handler: list[str]
+    in_progress: list[str]
+
+
+class DispatchClaim(BaseModel):
+    claim_id: str
+    state: State
+    decision: Literal["approve", "decline", "refer"] | None
+    payout: float | None
+    started_at: str | None
+    seconds: float
+    cost: float
+
+
+class Dispatch(BaseModel):
+    run_id: int
+    concurrency: int
+    model: str
+    reasoning_effort: str
+    state: RunState
     started_at: str
     ended_at: str | None
-    todos: list[Todo]
-
-
-class StartRunRequest(BaseModel):
-    limit: int = Field(ge=1)
-
-
-class TodosRequest(BaseModel):
-    todos: list[Todo] = Field(max_length=100)
-
-
-class FinishRunRequest(BaseModel):
-    summary: str = Field(max_length=4000)
+    seconds: float
+    claim_seconds: float
+    cost: float
+    claims: list[DispatchClaim]
+    summary: DispatchSummary | None

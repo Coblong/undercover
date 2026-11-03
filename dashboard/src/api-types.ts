@@ -20,6 +20,19 @@ export type DecisionDecision = "approve" | "decline" | "refer";
 
 export type DecisionRequestDecision = "approve" | "decline" | "refer";
 
+export type DispatchState = "running" | "finished" | "failed" | "stopped";
+
+export type DispatchClaimDecision = "approve" | "decline" | "refer";
+
+export type DispatchClaimState =
+  | "waiting"
+  | "in_progress"
+  | "waiting_for_sign_off"
+  | "decided"
+  | "left_for_handler";
+
+export type EndRunRequestState = "finished" | "failed";
+
 export type LineKind =
   | "item"
   | "electronics"
@@ -46,8 +59,6 @@ export type PayoutRequestBenefit =
 
 export type PolicyPlan = "economy" | "premium" | "first";
 
-export type RunState = "running" | "finished" | "failed";
-
 export type SectionDocument = "wording" | "manual";
 
 export type StepKind =
@@ -55,15 +66,6 @@ export type StepKind =
 
 export type StepRequestKind =
   "tool_call" | "tool_result" | "message" | "read" | "error";
-
-export type TodoStatus = "to_do" | "in_progress" | "done" | "left_for_handler";
-
-export type WorkResultState =
-  | "waiting"
-  | "in_progress"
-  | "waiting_for_sign_off"
-  | "decided"
-  | "left_for_handler";
 
 export interface ClaimDetail {
   amount_claimed: number;
@@ -101,6 +103,12 @@ export interface ClaimSummary {
   summary: string;
 }
 
+export interface CreateDispatchRequest {
+  concurrency: number;
+  model: string;
+  reasoning_effort: string;
+}
+
 export interface Decision {
   decided_at: string;
   decision: DecisionDecision;
@@ -116,14 +124,52 @@ export interface DecisionRequest {
   policy_section: string;
 }
 
+export interface Dispatch {
+  claim_seconds: number;
+  claims: DispatchClaim[];
+  concurrency: number;
+  cost: number;
+  ended_at: string | null;
+  model: string;
+  reasoning_effort: string;
+  run_id: number;
+  seconds: number;
+  started_at: string;
+  state: DispatchState;
+  summary: DispatchSummary | null;
+}
+
+export interface DispatchClaim {
+  claim_id: string;
+  cost: number;
+  decision: DispatchClaimDecision | null;
+  payout: number | null;
+  seconds: number;
+  started_at: string | null;
+  state: DispatchClaimState;
+}
+
+export interface DispatchSummary {
+  approved: number;
+  declined: number;
+  in_progress: string[];
+  left_for_handler: string[];
+  referred: number;
+  waiting_for_sign_off: HeldPayout[];
+}
+
 export interface Document {
   content: string;
   name: string;
   type: string;
 }
 
-export interface FinishRunRequest {
-  summary: string;
+export interface EndAttemptRequest {
+  error: string | null;
+}
+
+export interface EndRunRequest {
+  state: EndRunRequestState;
 }
 
 export interface HTTPValidationError {
@@ -134,6 +180,11 @@ export interface Handler {
   handler_id: string;
   name: string;
   role: string;
+}
+
+export interface HeldPayout {
+  claim_id: string;
+  payout: number;
 }
 
 export interface Item {
@@ -214,14 +265,9 @@ export interface PreviousClaim {
   summary: string;
 }
 
-export interface Run {
-  ended_at: string | null;
-  limit: number;
+export interface RunClaims {
+  claim_ids: string[];
   run_id: number;
-  started_at: string;
-  state: RunState;
-  summary: string;
-  todos: Todo[];
 }
 
 export interface Section {
@@ -246,8 +292,10 @@ export interface SignOffRequest {
   handler_id: string;
 }
 
-export interface StartRunRequest {
-  limit: number;
+export interface StartedClaim {
+  claim_id: string;
+  resumed: boolean;
+  thread_id: string;
 }
 
 export interface Step {
@@ -262,17 +310,12 @@ export interface StepRequest {
   text: string;
 }
 
+export interface StoppedRuns {
+  stopped: number;
+}
+
 export interface Text {
   text: string;
-}
-
-export interface Todo {
-  status: TodoStatus;
-  text: string;
-}
-
-export interface TodosRequest {
-  todos: Todo[];
 }
 
 export interface Trip {
@@ -288,12 +331,6 @@ export interface ValidationError {
   loc: string | number[];
   msg: string;
   type: string;
-}
-
-export interface WorkResult {
-  claim_id: string;
-  line: string;
-  state: WorkResultState;
 }
 
 export interface WorkTimeRequest {

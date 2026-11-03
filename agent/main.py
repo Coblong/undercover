@@ -2,10 +2,14 @@
 
 import json
 import logging
+import threading
 import time
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Annotated, Any, Literal, TypedDict
 
 import httpx
+from langchain_core.exceptions import ModelRateLimitError, ModelTimeoutError
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import (
     AIMessage,
@@ -27,7 +31,7 @@ from langgraph.types import Command, RetryPolicy, interrupt
 from pydantic import BaseModel, Field, SecretStr
 
 from agent import settings, tracing
-from agent.settings import AgentError
+from agent.settings import AgentError, error_text
 
 logger = logging.getLogger(__name__)
 
@@ -43,6 +47,8 @@ MODEL_TRIES = 3
 RETRY_DELAY = 1.0
 CONNECT_TRIES = 3
 clock = time.monotonic
+MODEL_TIMEOUT = 120
+MODEL_RETRIES = 5
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
 
 
@@ -219,6 +225,8 @@ def model() -> ChatOpenAI:
         model=name,
         base_url=OPENROUTER_BASE_URL,
         api_key=SecretStr(settings.api_key()),
+        timeout=MODEL_TIMEOUT,
+        max_retries=MODEL_RETRIES,
         reasoning_effort=None if effort == "none" else effort,
     )
 
@@ -459,7 +467,10 @@ def run(
     instructions = json.loads(call("GET", "/api/instructions/claim"))["text"]
     nodes = ClaimNodes(claim_id, instructions, llm or model(), run_id)
     graph = nodes.compile(checkpointer or InMemorySaver())
-    config = {**tracing.config_for(thread_id), "recursion_limit": RECURSION_LIMIT}
+    config = {
+        **tracing.config_for(thread_id, run_id),
+        "recursion_limit": RECURSION_LIMIT,
+    }
     started = clock()
     try:
         result = advance(graph, claim_id, config)
@@ -467,3 +478,81 @@ def run(
         record_time(claim_id, run_id, clock() - started)
         tracing.flush()
     return "waiting for sign-off" if "__interrupt__" in result else result["reply"]
+
+
+class AlreadyWorking(Exception):
+    """This process is already working the claim."""
+
+
+_lock = threading.Lock()
+_working: set[str] = set()
+
+
+@contextmanager
+def working(claim_id: str) -> Iterator[None]:
+    """Hold a claim while this process works it, or raise AlreadyWorking."""
+    with _lock:
+        if claim_id in _working:
+            raise AlreadyWorking(claim_id)
+        _working.add(claim_id)
+    try:
+        yield
+    finally:
+        with _lock:
+            _working.discard(claim_id)
+
+
+def work_claim(
+    claim_id: str,
+    run_id: int,
+    new_saver: Callable[[], BaseCheckpointSaver[Any]],
+    llm: BaseChatModel | None = None,
+) -> str:
+    """Work a claim for a run and return the state it rests in.
+
+    This is the one function the dispatcher calls. A waiting claim starts a new
+    attempt, and a claim in progress carries on its open attempt on its thread.
+    The claim gets a checkpointer of its own, so claims never take turns on one.
+    A rate limit or a timeout passes through with the attempt left open, for a
+    retry to carry on as the same attempt. Any other error fails the attempt.
+    A claim this process is already working is left alone.
+    """
+    try:
+        with working(claim_id):
+            return settle(claim_id, run_id, new_saver, llm)
+    except AlreadyWorking:
+        return "in_progress"
+
+
+def settle(
+    claim_id: str,
+    run_id: int,
+    new_saver: Callable[[], BaseCheckpointSaver[Any]],
+    llm: BaseChatModel | None,
+) -> str:
+    """Start the claim in the run, work it and end its attempt."""
+    started = time.monotonic()
+    begun = call("POST", f"/api/runs/{run_id}/claims/{claim_id}/start")
+    if begun.startswith("Error"):
+        raise AgentError(begun)
+    error = None
+    try:
+        run(claim_id, json.loads(begun)["thread_id"], llm, new_saver(), run_id)
+    except (ModelRateLimitError, ModelTimeoutError):
+        raise
+    except Exception as exc:  # the dispatch goes on, so the claim fails alone
+        logger.exception("The agent failed on %s", claim_id)
+        error = error_text(exc)
+    ended = call("POST", f"/api/claims/{claim_id}/attempt/end", {"error": error})
+    if ended.startswith("Error"):
+        raise AgentError(ended)
+    state = json.loads(ended)["state"]
+    logger.info(
+        "Attempt ended: claim=%s run=%s state=%s failed=%s seconds=%.1f",
+        claim_id,
+        run_id,
+        state,
+        error is not None or state in ("waiting", "left_for_handler"),
+        time.monotonic() - started,
+    )
+    return state

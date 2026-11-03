@@ -1,4 +1,4 @@
-"""Doing the agents' work: running them, ending the attempt and telling the story."""
+"""Doing the claim agent's work: running it and ending the attempt."""
 
 import logging
 import threading
@@ -7,28 +7,22 @@ from collections.abc import Callable
 from contextlib import closing
 
 import httpx
-from sqlalchemy import Connection, select
 
 from agent import settings
-from agent.queue import run_queue
-from agent.settings import AgentError
-from backend import attempts, queries, runs
-from backend import tables as t
+from agent.settings import AgentError, error_text
+from backend import attempts
 from backend.db import connect
-from backend.decisions import money
 from backend.models import State
 
 logger = logging.getLogger(__name__)
 
 ClaimAgent = Callable[[str, str], str]
-QueueAgent = Callable[[int], None]
 
 WORK_TIMEOUT = 900
 UNREACHABLE = "The agent's service could not be reached."
 
 _lock = threading.Lock()
 _working_claims: set[str] = set()
-_working_runs: set[int] = set()
 
 
 class AgentStopped(Exception):
@@ -51,6 +45,8 @@ def call_service(claim_id: str, thread_id: str) -> str:
         raise AgentUnreachable(UNREACHABLE) from exc
     except httpx.TransportError as exc:
         raise AgentStopped(type(exc).__name__) from exc
+    if response.status_code == httpx.codes.CONFLICT:
+        raise AgentStopped("the claim is already being worked")
     if not response.is_success:
         raise AgentError(response.text)
     return response.json()["reply"]
@@ -59,11 +55,6 @@ def call_service(claim_id: str, thread_id: str) -> str:
 def claim_agent() -> ClaimAgent:
     """Return the agent that works one claim. Tests replace it."""
     return call_service
-
-
-def queue_agent() -> QueueAgent:
-    """Return the agent that works the queue. Tests replace it."""
-    return run_queue
 
 
 def enter[T](working: set[T], key: T) -> bool:
@@ -85,23 +76,6 @@ def is_working(claim_id: str) -> bool:
     """Say whether this process is working a claim now."""
     with _lock:
         return claim_id in _working_claims
-
-
-def working_runs() -> frozenset[int]:
-    """Return the runs this process is working now."""
-    with _lock:
-        return frozenset(_working_runs)
-
-
-def step_text(who: str, exc: Exception) -> str:
-    """Say in a step that something stopped, without leaking details into the page.
-
-    The traceback goes to the log. The team sees the kind of error, and the
-    message only when the agent itself wrote it for them.
-    """
-    if isinstance(exc, AgentError):
-        return f"{who} stopped with an error: {exc}"
-    return f"{who} stopped with an error ({type(exc).__name__})"
 
 
 def execute_attempt(
@@ -144,7 +118,7 @@ def run_attempt(
         return "in_progress"
     except Exception as exc:  # the run is in the background, so nobody else sees this
         logger.exception("The agent failed on %s", claim_id)
-        error = step_text("The agent", exc)
+        error = error_text(exc)
     with closing(connect()) as conn:
         state = attempts.end_attempt(conn, claim_id, error)
     logger.info(
@@ -156,52 +130,3 @@ def run_attempt(
         time.monotonic() - started,
     )
     return state
-
-
-def carry_on_stopped(agent: ClaimAgent) -> None:
-    """Carry on every claim a stopped agent left in progress, one at a time."""
-    with closing(connect()) as conn:
-        stopped = attempts.stopped_claims(conn)
-    for claim_id in stopped:
-        execute_attempt(claim_id, None, agent, resume=True)
-
-
-def execute_queue(run_id: int, agent: QueueAgent, claim: ClaimAgent) -> None:
-    """Carry on stopped claims, run the queue agent, then close the run if going."""
-    if not enter(_working_runs, run_id):
-        return
-    error = None
-    try:
-        carry_on_stopped(claim)
-        agent(run_id)
-    except Exception as exc:  # the run is in the background, so nobody else sees this
-        logger.exception("The queue agent failed in run %s", run_id)
-        error = step_text("The queue agent", exc)
-    finally:
-        leave(_working_runs, run_id)
-    with closing(connect()) as conn:
-        runs.close_if_running(conn, run_id, error)
-
-
-def result_line(conn: Connection, claim_id: str) -> str:
-    """Say in one line how the work on a claim ended, for the queue agent."""
-    claim = queries.get_claim(conn, claim_id)
-    decision = claim.decision
-    if claim.state == "left_for_handler":
-        return f"{claim_id} failed twice and is left for a handler."
-    if claim.state == "in_progress":
-        return f"{claim_id} was stopped partway. The next run carries it on."
-    if claim.state == "waiting" or decision is None:
-        problem = conn.execute(
-            select(t.steps.c.text)
-            .where(t.steps.c.claim_id == claim_id, t.steps.c.kind == "error")
-            .order_by(t.steps.c.id.desc())
-            .limit(1)
-        ).scalar_one()
-        return f"{claim_id} failed ({problem}) and is waiting to be tried again."
-    line = f"{claim_id} decided: {decision.decision}"
-    if decision.decision != "approve":
-        return line + "."
-    if claim.payment is not None:
-        return f"{line} {money(decision.payout)}, paid."
-    return f"{line} {money(decision.payout)}, waiting for a handler's sign-off."

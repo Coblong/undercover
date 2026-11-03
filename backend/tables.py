@@ -83,12 +83,22 @@ runs = Table(
     "runs",
     metadata,
     Column("id", Integer, primary_key=True),
-    Column("claim_limit", Integer, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("concurrency", Integer, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("reasoning_effort", Text, nullable=False),
     Column("state", Text, nullable=False),
-    Column("summary", Text, nullable=False),
     Column("started_at", Text, nullable=False),
     Column("ended_at", Text),
     sqlite_autoincrement=True,
+)
+run_claims = Table(
+    "run_claims",
+    metadata,
+    Column("run_id", Integer, ForeignKey("runs.id"), primary_key=True),
+    Column("claim_id", Text, ForeignKey("claims.claim_id"), primary_key=True),
+    Column("position", Integer, nullable=False),
+    Column("started_at", Text),
 )
 attempts = Table(
     "attempts",
@@ -100,14 +110,6 @@ attempts = Table(
     Column("thread_id", Text),
     Column("failed", Boolean),
     sqlite_autoincrement=True,
-)
-todos = Table(
-    "todos",
-    metadata,
-    Column("run_id", Integer, ForeignKey("runs.id"), primary_key=True),
-    Column("position", Integer, primary_key=True),
-    Column("text", Text, nullable=False),
-    Column("status", Text, nullable=False),
 )
 steps = Table(
     "steps",
@@ -150,6 +152,7 @@ Index("work_times_by_run", work_times.c.run_id)
 Index("steps_by_claim", steps.c.claim_id)
 Index("attempts_by_claim", attempts.c.claim_id)
 Index("attempts_by_run", attempts.c.run_id)
+Index("run_claims_by_claim", run_claims.c.claim_id)
 Index(
     "one_open_attempt",
     attempts.c.claim_id,

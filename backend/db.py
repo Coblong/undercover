@@ -15,7 +15,16 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Connection, Engine, create_engine, event, insert, select, text
+from sqlalchemy import (
+    Connection,
+    Engine,
+    MetaData,
+    create_engine,
+    event,
+    insert,
+    select,
+    text,
+)
 from sqlalchemy.pool import ConnectionPoolEntry
 
 from backend import tables as t
@@ -26,6 +35,7 @@ DEFAULT_DB = Path(__file__).resolve().parent / "undercover.db"
 SCHEMA = "undercover"
 POOL_SIZE = 3
 POOL_OVERFLOW = 1
+POOL_TIMEOUT = 60
 
 _engines: dict[str, Engine] = {}
 _lock = threading.Lock()
@@ -71,7 +81,10 @@ def sqlite_begin(conn: Connection) -> None:
 
 
 def make_engine(url: str) -> Engine:
-    """Build an engine that holds at most four connections to Postgres."""
+    """Build an engine that holds at most four connections to Postgres.
+
+    A request that finds them all in use waits for one, up to a minute.
+    """
     if url.startswith("sqlite"):
         engine = create_engine(url, connect_args={"timeout": 10})
         event.listen(engine, "connect", sqlite_connect)
@@ -81,6 +94,7 @@ def make_engine(url: str) -> Engine:
         url,
         pool_size=POOL_SIZE,
         max_overflow=POOL_OVERFLOW,
+        pool_timeout=POOL_TIMEOUT,
         pool_pre_ping=True,
         pool_recycle=300,
         connect_args={"options": f"-c search_path={SCHEMA}"},
@@ -152,7 +166,9 @@ def reset_db() -> None:
         with built.begin() as conn:
             conn.execute(text(f"DROP SCHEMA IF EXISTS {SCHEMA} CASCADE"))
     else:
-        t.metadata.drop_all(built)
+        found = MetaData()
+        found.reflect(built)
+        found.drop_all(built)
     init_db()
 
 

@@ -4,7 +4,6 @@ uv run -m uvicorn agent.service:app --port 8002 --env-file .env
 """
 
 import logging
-import threading
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -24,10 +23,8 @@ from agent.settings import AgentError
 logger = logging.getLogger(__name__)
 
 SCHEMA = "undercover"
-POOL_SIZE = 2
-
-_lock = threading.Lock()
-_working: set[str] = set()
+POOL_SIZE = 4
+POOL_TIMEOUT = 120
 
 
 class WorkRequest(BaseModel):
@@ -36,6 +33,28 @@ class WorkRequest(BaseModel):
 
 class WorkResult(BaseModel):
     reply: str
+
+
+def make_pool(url: str, open: bool = True) -> ConnectionPool:
+    """Build the one pool every claim agent's saver shares.
+
+    It holds at most 4 connections, and a claim agent that finds them in use
+    waits for one for up to two minutes instead of failing.
+    """
+    return ConnectionPool(
+        url,
+        min_size=1,
+        max_size=POOL_SIZE,
+        timeout=POOL_TIMEOUT,
+        kwargs={
+            "autocommit": True,
+            "prepare_threshold": 0,
+            "row_factory": dict_row,
+            "options": f"-c search_path={SCHEMA}",
+        },
+        check=ConnectionPool.check_connection,
+        open=open,
+    )
 
 
 @asynccontextmanager
@@ -47,19 +66,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     if getattr(app.state, "checkpointer", None) is not None:
         yield
         return
-    pool = ConnectionPool(
-        settings.database_url(),
-        min_size=1,
-        max_size=POOL_SIZE,
-        kwargs={
-            "autocommit": True,
-            "prepare_threshold": 0,
-            "row_factory": dict_row,
-            "options": f"-c search_path={SCHEMA}",
-        },
-        check=ConnectionPool.check_connection,
-        open=True,
-    )
+    pool = make_pool(settings.database_url())
     with pool:
         with pool.connection() as conn:
             conn.execute(f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}")  # pyright: ignore[reportCallIssue, reportArgumentType]
@@ -105,12 +112,8 @@ def work_claim(
     claim_id: str, body: WorkRequest, saver: Saver, llm: Model
 ) -> WorkResult:
     """Start, resume or carry on a claim's thread and say how far it got."""
-    with _lock:
-        if claim_id in _working:
-            raise HTTPException(409, f"Claim {claim_id} is already being worked")
-        _working.add(claim_id)
     try:
-        return WorkResult(reply=main.run(claim_id, body.thread_id, llm, saver))
-    finally:
-        with _lock:
-            _working.discard(claim_id)
+        with main.working(claim_id):
+            return WorkResult(reply=main.run(claim_id, body.thread_id, llm, saver))
+    except main.AlreadyWorking:
+        raise HTTPException(409, f"Claim {claim_id} is already being worked") from None

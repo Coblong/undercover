@@ -74,3 +74,19 @@ def seconds_by_claim(conn: Connection, run_id: int) -> dict[str, float]:
         .group_by(t.work_times.c.claim_id)
     )
     return {row.claim_id: row.total for row in rows}
+
+
+def run_cost(conn: Connection, run_id: int) -> float:
+    """Return what the model calls of a run cost, failed attempts included."""
+    total = conn.execute(
+        select(func.sum(t.model_calls.c.cost)).where(t.model_calls.c.run_id == run_id)
+    ).scalar_one()
+    return total or 0.0
+
+
+def run_seconds(conn: Connection, run_id: int) -> float:
+    """Return the seconds the agent worked on the claims of a run, all added."""
+    total = conn.execute(
+        select(func.sum(t.work_times.c.seconds)).where(t.work_times.c.run_id == run_id)
+    ).scalar_one()
+    return total or 0.0

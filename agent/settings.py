@@ -60,3 +60,14 @@ def api_key() -> str:
 
 class AgentError(Exception):
     """A failure whose message is safe to show the team."""
+
+
+def error_text(exc: Exception) -> str:
+    """Say in a step that the agent stopped, without leaking details into the page.
+
+    The traceback goes to the log. The team sees the kind of error, and the
+    message only when the agent itself wrote it for them.
+    """
+    if isinstance(exc, AgentError):
+        return f"The agent stopped with an error: {exc}"
+    return f"The agent stopped with an error ({type(exc).__name__})"

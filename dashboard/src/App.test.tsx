@@ -10,7 +10,7 @@ afterEach(() => {
 });
 
 it("shows the queue and asks for a claim to be selected", async () => {
-  stubApi({ "/api/claims": summaries, "/api/runs/latest": null });
+  stubApi({ "/api/claims": summaries });
   render(<App />);
   expect(await screen.findByRole("button", { name: /CLM-1001/ })).toBeDefined();
   expect(screen.getByText("Select a claim to see it in full.")).toBeDefined();
@@ -19,7 +19,6 @@ it("shows the queue and asks for a claim to be selected", async () => {
 it("opens a claim from the queue", async () => {
   stubApi({
     "/api/claims": summaries,
-    "/api/runs/latest": null,
     "/api/claims/CLM-1001": claim,
     ...claimRoutes,
   });
@@ -33,7 +32,7 @@ it("opens a claim from the queue", async () => {
 });
 
 it("shows a loading message, then an error when the queue cannot be loaded", async () => {
-  stubApi({ "/api/runs/latest": null });
+  stubApi({});
   render(<App />);
   expect(screen.getByRole("status").textContent).toBe("Loading claims...");
   expect((await screen.findByRole("alert")).textContent).toBe(
@@ -44,8 +43,6 @@ it("shows a loading message, then an error when the queue cannot be loaded", asy
 it("switches to the instructions and back", async () => {
   stubApi({
     "/api/claims": summaries,
-    "/api/runs/latest": null,
-    "/api/instructions/queue": { text: "Plan the queue." },
     "/api/instructions/claim": { text: "Decide from the wording." },
   });
   render(<App />);
@@ -59,7 +56,7 @@ it("switches to the instructions and back", async () => {
 it("keeps the queue up to date", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   let queue = summaries;
-  stubApi({ "/api/claims": () => queue, "/api/runs/latest": null });
+  stubApi({ "/api/claims": () => queue });
   render(<App />);
   await screen.findByRole("button", { name: /CLM-1001/ });
   const decided = () => screen.getAllByRole("listitem")[3]?.textContent;

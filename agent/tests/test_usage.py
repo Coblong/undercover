@@ -36,8 +36,9 @@ def run_id(client: TestClient, tmp_path: Path) -> int:
     """A running dispatch, inserted directly, for a run id to record against."""
     with sqlite3.connect(tmp_path / "test.db") as conn:
         return conn.execute(
-            "INSERT INTO runs (claim_limit, state, summary, started_at)"
-            " VALUES (1, 'running', '', '2026-11-03T10:00:00+00:00')"
+            "INSERT INTO runs (kind, concurrency, model, reasoning_effort, state,"
+            " started_at) VALUES ('dispatch', 1, 'm', 'low', 'running',"
+            " '2026-11-03T10:00:00+00:00')"
         ).lastrowid  # pyright: ignore[reportReturnType]
 
 

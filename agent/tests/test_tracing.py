@@ -41,3 +41,16 @@ def test_a_run_is_flushed(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(tracing, "get_client", Client)
     tracing.flush()
     assert flushed == [True]
+
+
+def test_a_claim_worked_for_a_run_is_tagged_with_the_run(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk")
+    monkeypatch.setattr(tracing, "CallbackHandler", FakeHandler)
+    config = tracing.config_for("CLM-1003-1a2b3c4d", 12)
+    assert config["metadata"] == {
+        "langfuse_session_id": "CLM-1003-1a2b3c4d",
+        "langfuse_tags": ["run-12"],
+    }

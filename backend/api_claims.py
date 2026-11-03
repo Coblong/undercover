@@ -13,7 +13,6 @@ from backend import (
     work,
 )
 from backend.deps import ClaimAgent, Db
-from backend.instructions import AgentName
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
@@ -82,10 +81,10 @@ def get_document_section(document: DocumentName, number: int) -> Section:
     return documents.get_section(document, number)
 
 
-@router.get("/api/instructions/{agent}", operation_id="get_instructions")
-def get_instructions(agent: AgentName) -> Text:
-    """Get the instructions of the queue agent or the claim agent."""
-    return Text(text=instructions.render(agent))
+@router.get("/api/instructions/claim", operation_id="get_instructions")
+def get_instructions() -> Text:
+    """Get the claim agent's instructions."""
+    return Text(text=instructions.render())
 
 
 @router.get("/api/handlers", operation_id="list_handlers")

@@ -19,11 +19,13 @@ OPERATIONS = {
     "run_agent",
     "record_model_call",
     "record_work_time",
-    "start_run",
-    "get_latest_run",
-    "write_todos",
-    "work_claim",
-    "finish_run",
+    "create_dispatch",
+    "get_latest_dispatch",
+    "stop_runs",
+    "plan_run",
+    "end_run",
+    "start_claim",
+    "end_attempt",
 }
 
 

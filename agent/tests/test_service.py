@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import InMemorySaver
 
-from agent import service
+from agent import main, service
 from agent.settings import AgentError
 from agent.tests.stubs import calls, decision, stub
 
@@ -18,7 +18,6 @@ def agent_service() -> Iterator[TestClient]:
         yield client
     service.app.state.checkpointer = None
     service.app.dependency_overrides.clear()
-    service._working.clear()  # noqa: SLF001
 
 
 def use_model(*replies):
@@ -66,8 +65,10 @@ def test_it_resumes_a_thread_once_there_is_a_sign_off(
 
 
 def test_a_claim_being_worked_is_refused(agent_service: TestClient):
-    service._working.add("CLM-1001")  # noqa: SLF001
-    assert work(agent_service).status_code == 409
+    with main.working("CLM-1001"):
+        assert work(agent_service).status_code == 409
+    use_model(calls(decision("decline", 0)))
+    assert work(agent_service).status_code == 200
 
 
 def test_a_failure_tells_the_backend_what_stopped(
@@ -88,7 +89,6 @@ def test_a_failure_tells_the_backend_what_stopped(
     agent_service_failure = work(agent_service)
     assert agent_service_failure.json() == {"detail": "KeyError"}
     assert "secret" not in agent_service_failure.text
-    assert service._working == set()  # noqa: SLF001
 
 
 def test_it_will_not_start_without_a_database(monkeypatch: pytest.MonkeyPatch):
@@ -99,3 +99,9 @@ def test_it_will_not_start_without_a_database(monkeypatch: pytest.MonkeyPatch):
         TestClient(service.app),
     ):
         pass
+
+
+def test_claim_agents_share_a_pool_of_four_and_wait_for_a_connection():
+    pool = service.make_pool("postgresql://user:pass@localhost/none", open=False)
+    assert pool.max_size == 4
+    assert pool.timeout == 120

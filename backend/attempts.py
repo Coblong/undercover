@@ -9,7 +9,7 @@ from sqlalchemy import Connection, delete, func, insert, select, update
 from backend import queries, runs
 from backend import tables as t
 from backend.db import now, payout_limit, transaction
-from backend.models import Outcome, State, Step, StepRequest
+from backend.models import Outcome, StartedClaim, State, Step, StepRequest
 
 MAX_FAILED_ATTEMPTS = 2
 
@@ -58,37 +58,67 @@ def add_step(conn: Connection, claim_id: str, body: StepRequest) -> Step:
         return record_step(conn, claim_id, body)
 
 
-def start_attempt(
-    conn: Connection, claim_id: str, run_id: int | None = None
-) -> Outcome:
-    """Mark a waiting claim as in progress and record the attempt, or refuse.
-
-    In a run, a claim the run has not started yet counts against its limit.
-    """
+def start_attempt(conn: Connection, claim_id: str) -> Outcome:
+    """Mark a waiting claim as in progress and record the attempt, or refuse."""
     with transaction(conn):
-        state = queries.claim_state(conn, claim_id, lock=True)
-        if run_id is not None:
-            runs.check_can_start(conn, run_id, claim_id)
-        if state != "waiting":
-            raise HTTPException(
-                409, f"Claim {claim_id} is {state}, so the agent cannot start on it"
-            )
-        conn.execute(
-            update(t.claims)
-            .where(t.claims.c.claim_id == claim_id)
-            .values(state="in_progress")
-        )
-        conn.execute(
-            insert(t.attempts).values(
-                claim_id=claim_id,
-                run_id=run_id,
-                started_at=now(),
-                thread_id=new_thread(claim_id),
-            )
-        )
+        begin_attempt(conn, claim_id, queries.claim_state(conn, claim_id, lock=True))
     return Outcome(
         claim_id=claim_id, state="in_progress", message="The agent has started."
     )
+
+
+def begin_attempt(
+    conn: Connection, claim_id: str, state: str, run_id: int | None = None
+) -> str:
+    """Start an attempt on a waiting claim and return its thread. In a transaction."""
+    if state != "waiting":
+        raise HTTPException(
+            409, f"Claim {claim_id} is {state}, so the agent cannot start on it"
+        )
+    thread_id = new_thread(claim_id)
+    conn.execute(
+        update(t.claims)
+        .where(t.claims.c.claim_id == claim_id)
+        .values(state="in_progress")
+    )
+    conn.execute(
+        insert(t.attempts).values(
+            claim_id=claim_id, run_id=run_id, started_at=now(), thread_id=thread_id
+        )
+    )
+    return thread_id
+
+
+def start_claim(conn: Connection, run_id: int, claim_id: str) -> StartedClaim:
+    """Start a waiting claim in a run, or carry on the claim in progress.
+
+    A waiting claim gets a new attempt on a new thread. A claim in progress
+    carries on its open attempt on the same thread, as the same attempt.
+    """
+    with transaction(conn):
+        runs.running_run(conn, run_id, lock=True)
+        state = queries.claim_state(conn, claim_id, lock=True)
+        member = conn.execute(
+            update(t.run_claims)
+            .where(
+                t.run_claims.c.run_id == run_id,
+                t.run_claims.c.claim_id == claim_id,
+                t.run_claims.c.started_at.is_(None),
+            )
+            .values(started_at=now())
+        )
+        if not member.rowcount and claim_id not in runs.claims_of(conn, run_id):
+            raise HTTPException(409, f"Claim {claim_id} is not in run {run_id}")
+        resumed = state == "in_progress"
+        if resumed:
+            thread_id = open_thread(conn, claim_id)
+            if thread_id is None:
+                raise HTTPException(
+                    409, f"Claim {claim_id} is in progress with no work to carry on"
+                )
+        else:
+            thread_id = begin_attempt(conn, claim_id, state, run_id)
+    return StartedClaim(claim_id=claim_id, thread_id=thread_id, resumed=resumed)
 
 
 def open_thread(conn: Connection, claim_id: str) -> str | None:
@@ -128,17 +158,6 @@ def carry_on(conn: Connection, claim_id: str) -> Outcome:
     return Outcome(
         claim_id=claim_id, state="in_progress", message="The agent carries on."
     )
-
-
-def stopped_claims(conn: Connection) -> list[str]:
-    """Return the claims left in progress with an attempt still open."""
-    rows = conn.execute(
-        select(t.claims.c.claim_id)
-        .join(t.attempts, t.attempts.c.claim_id == t.claims.c.claim_id)
-        .where(t.claims.c.state == "in_progress", t.attempts.c.failed.is_(None))
-        .order_by(t.claims.c.claim_id)
-    )
-    return [row.claim_id for row in rows]
 
 
 def release(conn: Connection, claim_id: str, problem: str) -> None:

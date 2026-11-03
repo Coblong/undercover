@@ -66,12 +66,10 @@ def test_unknown_sections_and_documents(client: TestClient):
     assert client.get("/api/documents/handbook/sections").status_code == 422
 
 
-def test_instructions_for_both_agents(client: TestClient):
+def test_the_claim_agents_instructions(client: TestClient):
     claim = client.get("/api/instructions/claim").json()["text"]
-    queue = client.get("/api/instructions/queue").json()["text"]
     assert "get_document_section" in claim
-    assert "work_claim" in queue
-    assert client.get("/api/instructions/other").status_code == 422
+    assert client.get("/api/instructions/queue").status_code == 404
 
 
 def test_list_handlers(client: TestClient):
@@ -119,9 +117,6 @@ def test_the_instructions_carry_the_numbers_from_company_data(
 
 
 def test_the_instruction_files_hold_no_hard_coded_numbers():
-    for name in ("claim", "queue"):
-        raw = (
-            Path(instructions.__file__).parent / f"instructions_{name}.md"
-        ).read_text()
-        for number in ("$1,000", "90 days", "12 months"):
-            assert number not in raw
+    raw = (Path(instructions.__file__).parent / "instructions_claim.md").read_text()
+    for number in ("$1,000", "90 days", "12 months"):
+        assert number not in raw

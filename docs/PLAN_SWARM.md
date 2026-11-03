@@ -146,17 +146,17 @@ Builds the dispatcher, the harness function and the backend operations behind th
 
 Success criteria:
 
-- [ ] `uv lock` shows LangGraph at 1.2.19 or later, and `npm run check:python` is green.
-- [ ] Dispatcher tests, on a stand-in worker that sleeps: with N=3 and 10 claims the most ever working at once is 3, and with N=25 on 25 claims it is 25. Claims start in order, oldest submitted first, with claims in progress mixed in by date.
-- [ ] A claim that raises `ModelRateLimitError` once, through the real `work_claim` on a stub model, an in-memory saver and the in-process backend, carries on as the same attempt: one attempt on the claim, one thread, one decision, and the model is not asked again for a decision it already made.
-- [ ] A claim that keeps raising either error until the retries run out stays `in_progress` with its attempt open, no other claim is affected, and a second dispatch carries it on as the same attempt.
-- [ ] A claim that fails with any other error goes back to `waiting` and is worked once more in the same dispatch. A claim that fails twice is `left_for_handler`, and a claim with one earlier failure that fails again is left without a second round. One bad claim never stops the dispatch.
-- [ ] No claim is decided or paid twice in any of those tests, and the backend's own tests of the rules still pass.
-- [ ] A claim the service is already working is skipped by `work_claim`, and the service's route answers 409 for it. The backend treats that 409 as a stop, not a failed attempt.
-- [ ] A claim that pauses for a sign-off stays `waiting_for_sign_off`, no other claim waits for it, and its thread resumes after the sign-off.
-- [ ] A test of the saver factory shows a new saver is built for each claim. A test of the pool shows a maximum of 4 and a timeout of 120 seconds, and of the backend engine a pool timeout of 60.
-- [ ] `grep -rn "queue.py\|write_todos\|todos\|instructions_queue\|start_run" backend agent dashboard e2e` finds nothing but the docs' history, and `uv run -m agent` with no claim id prints its usage.
-- [ ] `npm run check` passes with the end-to-end test of the to-do list gone. The phase is committed.
+- [x] `uv lock` shows LangGraph at 1.2.19 or later, and `npm run check:python` is green.
+- [x] Dispatcher tests, on a stand-in worker that sleeps: with N=3 and 10 claims the most ever working at once is 3, and with N=25 on 25 claims it is 25. Claims start in order, oldest submitted first, with claims in progress mixed in by date.
+- [x] A claim that raises `ModelRateLimitError` once, through the real `work_claim` on a stub model, an in-memory saver and the in-process backend, carries on as the same attempt: one attempt on the claim, one thread, one decision, and the model is not asked again for a decision it already made.
+- [x] A claim that keeps raising either error until the retries run out stays `in_progress` with its attempt open, no other claim is affected, and a second dispatch carries it on as the same attempt.
+- [x] A claim that fails with any other error goes back to `waiting` and is worked once more in the same dispatch. A claim that fails twice is `left_for_handler`, and a claim with one earlier failure that fails again is left without a second round. One bad claim never stops the dispatch.
+- [x] No claim is decided or paid twice in any of those tests, and the backend's own tests of the rules still pass.
+- [x] A claim the service is already working is skipped by `work_claim`, and the service's route answers 409 for it. The backend treats that 409 as a stop, not a failed attempt.
+- [x] A claim that pauses for a sign-off stays `waiting_for_sign_off`, no other claim waits for it, and its thread resumes after the sign-off.
+- [x] A test of the saver factory shows a new saver is built for each claim. A test of the pool shows a maximum of 4 and a timeout of 120 seconds, and of the backend engine a pool timeout of 60.
+- [x] `grep -rn "queue.py\|write_todos\|todos\|instructions_queue\|start_run" backend agent dashboard e2e` finds nothing but the docs' history, and `uv run -m agent` with no claim id prints its usage.
+- [x] `npm run check` passes with the end-to-end test of the to-do list gone. The phase is committed.
 
 ## Phase 3: Starting a dispatch from the dashboard
 

@@ -1,17 +1,23 @@
-"""Routes that start the agents and follow their runs."""
+"""Routes that start the claim agent and follow dispatches."""
 
-from fastapi import APIRouter, BackgroundTasks
+import logging
+
+from fastapi import APIRouter, BackgroundTasks, HTTPException
 
 from backend import attempts, queries, runs, work
-from backend.deps import ClaimAgent, Db, QueueAgent
+from backend.deps import ClaimAgent, Db
 from backend.models import (
-    FinishRunRequest,
+    CreateDispatchRequest,
+    Dispatch,
+    EndAttemptRequest,
+    EndRunRequest,
     Outcome,
-    Run,
-    StartRunRequest,
-    TodosRequest,
-    WorkResult,
+    RunClaims,
+    StartedClaim,
+    StoppedRuns,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -32,43 +38,48 @@ def run_agent(
     return outcome
 
 
-@router.post("/api/runs", operation_id="start_run", status_code=202)
-def start_run(
-    body: StartRunRequest,
-    conn: Db,
-    background: BackgroundTasks,
-    agent: QueueAgent,
-    claim: ClaimAgent,
-) -> Run:
-    """Start the queue agent on the waiting claims, up to a limit."""
-    run = runs.start(conn, body.limit, work.working_runs())
-    background.add_task(work.execute_queue, run.run_id, agent, claim)
-    return run
+@router.post("/api/runs/dispatch", operation_id="create_dispatch", status_code=201)
+def create_dispatch(body: CreateDispatchRequest, conn: Db) -> Dispatch:
+    """Create a dispatch, unless a dispatch or an evaluation is already running."""
+    return runs.create_dispatch(conn, body)
 
 
-@router.get("/api/runs/latest", operation_id="get_latest_run")
-def get_latest_run(conn: Db) -> Run | None:
-    """Get the latest run of the queue agent with its to-do list."""
-    return runs.get_latest(conn)
+@router.get("/api/dispatches/latest", operation_id="get_latest_dispatch")
+def get_latest_dispatch(conn: Db) -> Dispatch | None:
+    """Get the latest dispatch with its claims, cost, time and summary."""
+    return runs.get_latest_dispatch(conn)
 
 
-@router.put("/api/runs/{run_id}/todos", operation_id="write_todos")
-def write_todos(run_id: int, body: TodosRequest, conn: Db) -> Run:
-    """Replace the to-do list of a run."""
-    return runs.write_todos(conn, run_id, body.todos)
+@router.post("/api/runs/stop", operation_id="stop_runs")
+def stop_runs(conn: Db) -> StoppedRuns:
+    """Mark every dispatch and evaluation still running as stopped."""
+    return runs.stop_all(conn)
 
 
-@router.post("/api/runs/{run_id}/claims/{claim_id}/work", operation_id="work_claim")
-def work_claim(run_id: int, claim_id: str, conn: Db, agent: ClaimAgent) -> WorkResult:
-    """Work one claim in a run with a fresh claim agent and report the result."""
-    attempts.start_attempt(conn, claim_id, run_id)
-    state = work.execute_attempt(claim_id, run_id, agent)
-    return WorkResult(
-        claim_id=claim_id, state=state, line=work.result_line(conn, claim_id)
+@router.post("/api/runs/{run_id}/plan", operation_id="plan_run")
+def plan_run(run_id: int, conn: Db) -> RunClaims:
+    """Choose and record the claims a run works, oldest submitted first."""
+    return runs.plan(conn, run_id)
+
+
+@router.post("/api/runs/{run_id}/end", operation_id="end_run")
+def end_run(run_id: int, body: EndRunRequest, conn: Db) -> Dispatch:
+    """End a dispatch or an evaluation that is running."""
+    return runs.end(conn, run_id, body.state)
+
+
+@router.post("/api/runs/{run_id}/claims/{claim_id}/start", operation_id="start_claim")
+def start_claim(run_id: int, claim_id: str, conn: Db) -> StartedClaim:
+    """Start a waiting claim in a run, or carry on a claim in progress."""
+    return attempts.start_claim(conn, run_id, claim_id)
+
+
+@router.post("/api/claims/{claim_id}/attempt/end", operation_id="end_attempt")
+def end_attempt(claim_id: str, body: EndAttemptRequest, conn: Db) -> Outcome:
+    """End the open attempt on a claim, as failed when there is an error."""
+    if attempts.open_thread(conn, claim_id) is None:
+        raise HTTPException(409, f"Claim {claim_id} has no open attempt to end")
+    state = attempts.end_attempt(conn, claim_id, body.error)
+    return Outcome(
+        claim_id=claim_id, state=state, message=f"The attempt ended: {state}."
     )
-
-
-@router.post("/api/runs/{run_id}/finish", operation_id="finish_run")
-def finish_run(run_id: int, body: FinishRunRequest, conn: Db) -> Run:
-    """End a run with a summary, if no waiting claim has been missed."""
-    return runs.finish(conn, run_id, body.summary)

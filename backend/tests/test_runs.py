@@ -1,252 +1,246 @@
-import os
-import sqlite3
-from contextlib import closing
+from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
-from backend import runs
-from backend import work as backend_work
-from backend.db import connect
-from backend.main import app
-from conftest import Agents
+DISPATCH = {"concurrency": 3, "model": "openai/gpt-6-luna", "reasoning_effort": "low"}
+SECTION = "3. Trip Delay"
 
 
-def new_run(limit: int) -> int:
-    with closing(connect()) as conn:
-        return runs.create(conn, limit).run_id
+def create(client: TestClient, **changes: Any) -> dict[str, Any]:
+    response = client.post("/api/runs/dispatch", json={**DISPATCH, **changes})
+    assert response.status_code == 201, response.text
+    return response.json()
 
 
-def work(client: TestClient, run_id: int, claim_id: str):
-    return client.post(f"/api/runs/{run_id}/claims/{claim_id}/work")
+def plan(client: TestClient, run_id: int) -> list[str]:
+    return client.post(f"/api/runs/{run_id}/plan").json()["claim_ids"]
 
 
-def finish(client: TestClient, run_id: int, summary: str = "All done."):
-    return client.post(f"/api/runs/{run_id}/finish", json={"summary": summary})
+def start(client: TestClient, run_id: int, claim_id: str) -> Any:
+    return client.post(f"/api/runs/{run_id}/claims/{claim_id}/start")
 
 
-def latest(client: TestClient):
-    return client.get("/api/runs/latest").json()
+def end(client: TestClient, claim_id: str, error: str | None = None) -> Any:
+    return client.post(f"/api/claims/{claim_id}/attempt/end", json={"error": error})
 
 
-def decide(client: TestClient, claim_id: str, kind: str, payout: float):
-    client.post(
-        f"/api/claims/{claim_id}/decision",
-        json={
-            "decision": kind,
-            "payout": payout,
-            "explanation": "Covered.",
-            "policy_section": "3. Trip Delay",
-        },
+def decide(client: TestClient, claim_id: str, kind: str, payout: float) -> None:
+    body = {
+        "decision": kind,
+        "payout": payout,
+        "explanation": "Stub.",
+        "policy_section": SECTION,
+    }
+    assert client.post(f"/api/claims/{claim_id}/decision", json=body).status_code == 200
+
+
+def latest(client: TestClient) -> dict[str, Any]:
+    return client.get("/api/dispatches/latest").json()
+
+
+def test_a_dispatch_is_created_running_with_its_settings(client: TestClient):
+    assert client.get("/api/dispatches/latest").json() is None
+    run = create(client, concurrency=7, reasoning_effort="none")
+    assert run["state"] == "running"
+    assert (run["concurrency"], run["model"], run["reasoning_effort"]) == (
+        7,
+        "openai/gpt-6-luna",
+        "none",
     )
+    assert run["claims"] == []
+    assert run["summary"] is None
+    assert latest(client)["run_id"] == run["run_id"]
 
 
-@pytest.fixture
-def declining(client: TestClient, agents: Agents) -> None:
-    def runner(claim_id: str, thread_id: str) -> str:
-        decide(client, claim_id, "decline", 0)
-        return "done"
-
-    agents.claim(runner)
-
-
-def states(client: TestClient) -> list[str]:
-    return [c["state"] for c in client.get("/api/claims").json()]
+def test_only_one_dispatch_runs_at_a_time(client: TestClient):
+    run = create(client)
+    again = client.post("/api/runs/dispatch", json=DISPATCH)
+    assert again.status_code == 409
+    assert "already running" in again.json()["detail"]
+    ended = client.post(f"/api/runs/{run['run_id']}/end", json={"state": "finished"})
+    assert ended.json()["state"] == "finished"
+    assert ended.json()["ended_at"]
+    assert create(client)["run_id"] == run["run_id"] + 1
 
 
-def test_start_a_run_that_the_agent_never_finishes(client: TestClient, agents: Agents):
-    seen: list[int] = []
-    agents.queue(seen.append)
-    response = client.post("/api/runs", json={"limit": 5})
-    assert response.status_code == 202
-    assert response.json()["limit"] == 5
-    assert seen == [response.json()["run_id"]]
-    assert latest(client)["state"] == "failed"
-    assert latest(client)["summary"] == "The agent stopped without finishing."
+def test_a_run_ends_once(client: TestClient):
+    run_id = create(client)["run_id"]
+    assert client.post(f"/api/runs/{run_id}/end", json={"state": "failed"}).json()[
+        "state"
+    ] == ("failed")
+    again = client.post(f"/api/runs/{run_id}/end", json={"state": "finished"})
+    assert again.status_code == 409
+    assert client.post("/api/runs/99/end", json={"state": "failed"}).status_code == 404
 
 
-def test_a_queue_agent_that_crashes_fails_the_run(client: TestClient, agents: Agents):
-    def crash(run_id: int) -> None:
-        raise RuntimeError("model unavailable")
-
-    agents.queue(crash)
-    client.post("/api/runs", json={"limit": 5})
-    assert latest(client)["summary"] == (
-        "The queue agent stopped with an error (RuntimeError)"
-    )
-
-
-def test_a_run_needs_a_limit_and_only_one_runs_at_a_time(
-    client: TestClient, monkeypatch: pytest.MonkeyPatch
-):
-    assert client.post("/api/runs", json={"limit": 0}).status_code == 422
-    assert client.post("/api/runs", json={}).status_code == 422
-    assert client.get("/api/runs/latest").json() is None
-    run_id = new_run(3)
-    live = frozenset({run_id})
-    monkeypatch.setattr(backend_work, "working_runs", lambda: live)
-    assert client.post("/api/runs", json={"limit": 5}).status_code == 409
-
-
-def test_the_limit_stops_a_run_starting_more_claims(
-    client: TestClient, declining: None
-):
-    run_id = new_run(2)
-    assert work(client, run_id, "CLM-1001").status_code == 200
-    assert work(client, run_id, "CLM-1002").status_code == 200
-    refused = work(client, run_id, "CLM-1003")
-    assert refused.status_code == 409
-    assert "limit of 2 claims" in refused.json()["detail"]
-    assert states(client).count("waiting") == 23
-
-
-def test_the_result_is_one_line_from_the_database(client: TestClient, agents: Agents):
-    def runner(claim_id: str, thread_id: str) -> str:
-        if claim_id == "CLM-1001":
-            decide(client, claim_id, "approve", 420)
-            client.post(f"/api/claims/{claim_id}/payment", json={"amount": 420})
-        elif claim_id == "CLM-1002":
-            decide(client, claim_id, "approve", 1100)
-        else:
-            decide(client, claim_id, "refer", 0)
-        return "I did something else entirely."
-
-    agents.claim(runner)
-    run_id = new_run(5)
-    lines = [work(client, run_id, f"CLM-100{n}").json()["line"] for n in (1, 2, 3)]
-    assert lines == [
-        "CLM-1001 decided: approve $420.00, paid.",
-        "CLM-1002 decided: approve $1,100.00, waiting for a handler's sign-off.",
-        "CLM-1003 decided: refer.",
+def test_the_plan_is_every_claim_to_work_oldest_submitted_first(client: TestClient):
+    claims = client.get("/api/claims").json()
+    oldest_first = [
+        c["claim_id"]
+        for c in sorted(claims, key=lambda c: (c["submitted_on"], c["claim_id"]))
     ]
+    run_id = create(client)["run_id"]
+    assert plan(client, run_id) == oldest_first
+    assert plan(client, run_id) == oldest_first
+    assert [c["claim_id"] for c in latest(client)["claims"]] == oldest_first
 
 
-def test_a_failed_claim_does_not_stop_the_run_and_is_retried_within_the_limit(
-    client: TestClient, agents: Agents
+def test_the_plan_mixes_in_claims_in_progress_and_leaves_out_the_rest(
+    client: TestClient,
 ):
-    calls: list[str] = []
-
-    def runner(claim_id: str, thread_id: str) -> str:
-        calls.append(claim_id)
-        if claim_id == "CLM-1001" and calls.count(claim_id) == 1:
-            raise RuntimeError("model unavailable")
-        decide(client, claim_id, "decline", 0)
-        return "done"
-
-    agents.claim(runner)
-    run_id = new_run(1)
-    failed = work(client, run_id, "CLM-1001").json()
-    assert failed["state"] == "waiting"
-    assert failed["line"] == (
-        "CLM-1001 failed (The agent stopped with an error (RuntimeError))"
-        " and is waiting to be tried again."
+    decide(client, "CLM-1001", "decline", 0)
+    client.post("/api/claims/CLM-1002/run")
+    first = create(client)["run_id"]
+    chosen = plan(client, first)
+    assert "CLM-1001" not in chosen
+    assert "CLM-1002" in chosen
+    assert len(chosen) == 24
+    ordered = sorted(
+        (c for c in client.get("/api/claims").json() if c["claim_id"] in chosen),
+        key=lambda c: (c["submitted_on"], c["claim_id"]),
     )
-    retried = work(client, run_id, "CLM-1001").json()
-    assert retried["line"] == "CLM-1001 decided: decline."
-    assert work(client, run_id, "CLM-1002").status_code == 409
+    assert chosen == [c["claim_id"] for c in ordered]
 
 
-def test_a_claim_that_fails_twice_is_reported_as_left_for_a_handler(
-    client: TestClient, agents: Agents
+def test_a_waiting_claim_starts_and_one_in_progress_carries_on(client: TestClient):
+    run_id = create(client)["run_id"]
+    plan(client, run_id)
+    first = start(client, run_id, "CLM-1001").json()
+    assert first["resumed"] is False
+    assert first["thread_id"].startswith("CLM-1001-")
+    assert client.get("/api/claims/CLM-1001").json()["state"] == "in_progress"
+    again = start(client, run_id, "CLM-1001").json()
+    assert again == {**first, "resumed": True}
+    started = [c for c in latest(client)["claims"] if c["started_at"]]
+    assert [c["claim_id"] for c in started] == ["CLM-1001"]
+
+
+def test_a_claim_can_only_be_started_in_a_running_run_that_holds_it(
+    client: TestClient,
 ):
-    agents.claim(lambda claim_id, thread_id: "done")
-    run_id = new_run(5)
-    work(client, run_id, "CLM-1001")
-    left = work(client, run_id, "CLM-1001").json()
-    assert left["state"] == "left_for_handler"
-    assert left["line"] == "CLM-1001 failed twice and is left for a handler."
+    run_id = create(client)["run_id"]
+    assert start(client, run_id, "CLM-1001").status_code == 409
+    plan(client, run_id)
+    decide(client, "CLM-1002", "decline", 0)
+    assert start(client, run_id, "CLM-1002").status_code == 409
+    assert start(client, run_id, "CLM-9999").status_code == 404
+    assert start(client, 99, "CLM-1001").status_code == 404
+    client.post(f"/api/runs/{run_id}/end", json={"state": "finished"})
+    assert start(client, run_id, "CLM-1001").status_code == 409
 
 
-def test_finish_is_refused_while_a_claim_could_still_be_started(
-    client: TestClient, declining: None
+def test_a_carried_on_claim_keeps_its_attempt_from_an_earlier_run(client: TestClient):
+    first = create(client)["run_id"]
+    plan(client, first)
+    thread = start(client, first, "CLM-1001").json()["thread_id"]
+    client.post("/api/runs/stop")
+    second = create(client)["run_id"]
+    assert "CLM-1001" in plan(client, second)
+    carried = start(client, second, "CLM-1001").json()
+    assert carried["thread_id"] == thread
+    assert carried["resumed"] is True
+
+
+def test_ending_an_attempt_settles_the_claim(client: TestClient):
+    run_id = create(client)["run_id"]
+    plan(client, run_id)
+    assert end(client, "CLM-1001").status_code == 409
+    start(client, run_id, "CLM-1001")
+    decide(client, "CLM-1001", "decline", 0)
+    ended = end(client, "CLM-1001")
+    assert ended.json()["state"] == "decided"
+
+
+def test_a_failed_attempt_goes_back_to_waiting_and_two_leave_the_claim(
+    client: TestClient,
 ):
-    run_id = new_run(2)
-    refused = finish(client, run_id)
-    assert refused.status_code == 409
-    assert "CLM-1001, CLM-1002" in refused.json()["detail"]
-    work(client, run_id, "CLM-1001")
-    assert finish(client, run_id).status_code == 409
-    work(client, run_id, "CLM-1002")
-    done = finish(client, run_id, "Two declined.")
-    assert done.status_code == 200
-    assert done.json()["state"] == "finished"
-    assert done.json()["summary"] == "Two declined."
-    assert states(client).count("waiting") == 23
-    assert finish(client, run_id).status_code == 409
+    run_id = create(client)["run_id"]
+    plan(client, run_id)
+    start(client, run_id, "CLM-1001")
+    assert end(client, "CLM-1001", "The agent stopped with an error").json()[
+        "state"
+    ] == ("waiting")
+    assert start(client, run_id, "CLM-1001").json()["resumed"] is False
+    assert end(client, "CLM-1001", "again").json()["state"] == "left_for_handler"
 
 
-def test_finish_is_refused_while_a_claim_waits_for_a_retry(
-    client: TestClient, agents: Agents
-):
-    agents.claim(lambda claim_id, thread_id: "done")
-    run_id = new_run(1)
-    work(client, run_id, "CLM-1001")
-    refused = finish(client, run_id)
-    assert refused.status_code == 409
-    assert "missed CLM-1001." in refused.json()["detail"]
-    work(client, run_id, "CLM-1001")
-    assert finish(client, run_id).status_code == 200
+def test_starting_the_service_stops_every_run_that_is_going(client: TestClient):
+    run_id = create(client)["run_id"]
+    assert client.post("/api/runs/stop").json() == {"stopped": 1}
+    assert latest(client)["state"] == "stopped"
+    assert latest(client)["run_id"] == run_id
+    assert client.post("/api/runs/stop").json() == {"stopped": 0}
+    assert create(client)["run_id"] == run_id + 1
 
 
-def test_the_to_do_list_is_replaced_in_order(client: TestClient):
-    run_id = new_run(5)
-    first = [
-        {"text": "CLM-1002", "status": "in_progress"},
-        {"text": "CLM-1001", "status": "to_do"},
-    ]
-    second = [
-        {"text": "CLM-1002", "status": "done"},
-        {"text": "CLM-1001", "status": "left_for_handler"},
-        {"text": "CLM-1003", "status": "to_do"},
-    ]
-    assert (
-        client.put(f"/api/runs/{run_id}/todos", json={"todos": first}).status_code
-        == 200
-    )
-    assert latest(client)["todos"] == first
-    client.put(f"/api/runs/{run_id}/todos", json={"todos": second})
+def test_the_summary_is_built_from_the_records(client: TestClient):
+    run_id = create(client)["run_id"]
+    plan(client, run_id)
+    for number in range(1, 7):
+        start(client, run_id, f"CLM-100{number}")
+    decide(client, "CLM-1001", "approve", 420)
+    client.post("/api/claims/CLM-1001/payment", json={"amount": 420})
+    decide(client, "CLM-1002", "decline", 0)
+    decide(client, "CLM-1003", "approve", 1250)
+    decide(client, "CLM-1004", "refer", 0)
+    for number in (1, 2, 3, 4):
+        assert end(client, f"CLM-100{number}").status_code == 200
+    end(client, "CLM-1005", "x")
+    start(client, run_id, "CLM-1005")
+    end(client, "CLM-1005", "y")
+    assert latest(client)["summary"] is None
+    client.post(f"/api/runs/{run_id}/end", json={"state": "finished"})
+    summary = latest(client)["summary"]
+    assert summary == {
+        "approved": 2,
+        "declined": 1,
+        "referred": 1,
+        "waiting_for_sign_off": [{"claim_id": "CLM-1003", "payout": 1250.0}],
+        "left_for_handler": ["CLM-1005"],
+        "in_progress": ["CLM-1006"],
+    }
+    states = {c["claim_id"]: c["state"] for c in latest(client)["claims"]}
+    assert states["CLM-1003"] == "waiting_for_sign_off"
+    assert states["CLM-1010"] == "waiting"
+
+
+def test_cost_and_time_are_the_runs_own(client: TestClient):
+    first = create(client)["run_id"]
+    plan(client, first)
+    for run_id, claim_id, cost in (
+        (first, "CLM-1001", 0.01),
+        (first, "CLM-1001", 0.02),
+        (first, "CLM-1002", 0.04),
+        (None, "CLM-1001", 0.5),
+    ):
+        body = {"run_id": run_id, "input_tokens": 10, "output_tokens": 5, "cost": cost}
+        assert (
+            client.post(f"/api/claims/{claim_id}/model-calls", json=body).status_code
+            == 200
+        )
+    for run_id, claim_id, seconds in (
+        (first, "CLM-1001", 3.0),
+        (first, "CLM-1001", 2.0),
+        (first, "CLM-1002", 4.0),
+        (None, "CLM-1001", 90.0),
+    ):
+        body = {"run_id": run_id, "seconds": seconds}
+        assert (
+            client.post(f"/api/claims/{claim_id}/work-times", json=body).status_code
+            == 200
+        )
     run = latest(client)
-    assert run["todos"] == second
-    assert (run["limit"], run["state"], run["summary"]) == (5, "running", "")
-
-
-def test_a_bad_to_do_status_and_a_finished_run_are_refused(client: TestClient):
-    run_id = new_run(5)
-    bad = {"todos": [{"text": "CLM-1001", "status": "maybe"}]}
-    assert client.put(f"/api/runs/{run_id}/todos", json=bad).status_code == 422
-    assert client.put("/api/runs/99/todos", json={"todos": []}).status_code == 404
-    with closing(connect()) as conn:
-        runs.end(conn, run_id, "finished", "Done.")
-    assert (
-        client.put(f"/api/runs/{run_id}/todos", json={"todos": []}).status_code == 409
+    assert run["cost"] == 0.07
+    assert run["claim_seconds"] == 9.0
+    by_claim = {c["claim_id"]: c for c in run["claims"]}
+    assert (by_claim["CLM-1001"]["cost"], by_claim["CLM-1001"]["seconds"]) == (
+        0.03,
+        5.0,
     )
-
-
-def test_a_run_left_going_is_taken_over_by_the_next_start(
-    client: TestClient, declining: None, agents: Agents
-):
-    run_id = new_run(5)
-    with TestClient(app) as restarted:
-        assert restarted.get("/api/runs/latest").json()["state"] == "running"
-    seen: list[int] = []
-
-    def queue(started: int) -> None:
-        seen.append(started)
-        for number in range(1, 6):
-            work(client, started, f"CLM-100{number}")
-        finish(client, started, "Carried on.")
-
-    agents.queue(queue)
-    response = client.post("/api/runs", json={"limit": 2})
-    assert response.status_code == 202
-    assert response.json()["run_id"] == run_id
-    assert response.json()["limit"] == 5
-    assert seen == [run_id]
-    run = latest(client)
-    assert (run["run_id"], run["state"], run["summary"]) == (
-        run_id,
-        "finished",
-        "Carried on.",
-    )
-    with sqlite3.connect(os.environ["UNDERCOVER_DB"]) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 1
+    assert by_claim["CLM-1003"]["cost"] == 0
+    client.post(f"/api/runs/{first}/end", json={"state": "finished"})
+    second = create(client)["run_id"]
+    body = {"run_id": second, "input_tokens": 1, "output_tokens": 1, "cost": 1.0}
+    client.post("/api/claims/CLM-1001/model-calls", json=body)
+    assert latest(client)["cost"] == 1.0
+    assert client.get("/api/dispatches/latest").json()["run_id"] == second

@@ -8,9 +8,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Connection, Executable, insert, select, text
 from sqlalchemy.exc import IntegrityError
 
-from backend import attempts, db, decisions, runs
+from backend import attempts, db, decisions
 from backend import tables as t
 from backend.db import connect, init_db
+from backend.tests.helpers import new_dispatch
 
 
 def test_a_connection_can_be_used_from_another_thread(
@@ -48,11 +49,16 @@ def test_the_database_refuses_what_makes_no_sense(client: TestClient):
         )
         attempts.start_attempt(conn, "CLM-1001")
         refuses(conn, insert(t.attempts).values(claim_id="CLM-1001", started_at="now"))
-        runs.create(conn, 5)
+        new_dispatch(conn, 5)
         refuses(
             conn,
             insert(t.runs).values(
-                claim_limit=5, state="running", summary="", started_at="now"
+                kind="dispatch",
+                concurrency=5,
+                model="m",
+                reasoning_effort="low",
+                state="running",
+                started_at="now",
             ),
         )
 
@@ -101,3 +107,12 @@ def test_the_tests_never_use_supabase(client: TestClient):
     assert db.database_url().startswith("sqlite")
     with closing(connect()) as conn:
         assert conn.execute(select(t.claims.c.claim_id)).first() is not None
+
+
+def test_a_request_waits_a_minute_for_one_of_four_connections():
+    engine = db.make_engine("postgresql+psycopg://user:pass@localhost/none")
+    pool = engine.pool
+    assert pool.size() == 3  # pyright: ignore[reportAttributeAccessIssue]
+    assert pool._max_overflow == 1  # pyright: ignore[reportAttributeAccessIssue]  # noqa: SLF001
+    assert pool.timeout() == 60  # pyright: ignore[reportAttributeAccessIssue]
+    engine.dispose()

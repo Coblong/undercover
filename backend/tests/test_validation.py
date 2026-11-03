@@ -95,9 +95,14 @@ def test_long_texts_and_lists_are_refused(client: TestClient):
     assert client.post("/api/claims/CLM-1001/steps", json=step).status_code == 422
     step["text"] = "x" * 20_000
     assert client.post("/api/claims/CLM-1001/steps", json=step).status_code == 200
-    todos = [{"text": f"CLM-{n}", "status": "to_do"} for n in range(101)]
-    assert client.put("/api/runs/1/todos", json={"todos": todos}).status_code == 422
-    long_item = [{"text": "x" * 301, "status": "to_do"}]
-    assert client.put("/api/runs/1/todos", json={"todos": long_item}).status_code == 422
-    summary = {"summary": "x" * 4001}
-    assert client.post("/api/runs/1/finish", json=summary).status_code == 422
+
+
+def test_a_dispatch_needs_a_sensible_number_of_claim_agents(client: TestClient):
+    body = {"model": "openai/gpt-6-luna", "reasoning_effort": "low"}
+    for concurrency in (0, 26, -1):
+        response = client.post(
+            "/api/runs/dispatch", json={**body, "concurrency": concurrency}
+        )
+        assert response.status_code == 422
+    assert client.post("/api/runs/1/end", json={"state": "running"}).status_code == 422
+    assert client.post("/api/runs/1/end", json={"state": "stopped"}).status_code == 422

@@ -10,6 +10,7 @@ from sqlalchemy import Connection, text
 from backend import attempts, decisions, runs
 from backend.db import connect, init_db
 from backend.models import DecisionRequest, PaymentRequest, SignOffRequest
+from backend.tests.helpers import new_dispatch
 
 THREADS = 8
 ROUNDS = 50
@@ -116,21 +117,18 @@ def test_one_attempt_starts(database: None):
     exactly_one_winner(race(lambda c: attempts.start_attempt(c, "CLM-1001")))
 
 
-def test_one_run_starts(database: None):
-    exactly_one_winner(race(lambda c: runs.create(c, 5)))
+def test_one_dispatch_starts(database: None):
+    exactly_one_winner(race(lambda c: new_dispatch(c, 5)))
 
 
-def test_a_run_never_starts_more_claims_than_its_limit(database: None):
-    run_id = on_own_connection(lambda c: runs.create(c, 3).run_id)
-    claims = iter(f"CLM-10{n:02d}" for n in range(1, 40))
-    lock = threading.Lock()
-
-    def start(conn: Connection) -> Any:
-        with lock:
-            claim_id = next(claims)
-        return attempts.start_attempt(conn, claim_id, run_id)
-
-    results = race(start)
-    started = [r for r in results if not isinstance(r, int | str)]
-    assert len(started) == 3, results
-    assert all(r == 409 for r in results if isinstance(r, int | str)), results
+def test_a_claim_starts_one_attempt_in_a_run(database: None):
+    run_id = on_own_connection(lambda c: new_dispatch(c).run_id)
+    on_own_connection(lambda c: runs.plan(c, run_id))
+    results = race(lambda c: attempts.start_claim(c, run_id, "CLM-1001"))
+    assert all(not isinstance(r, int | str) for r in results), results
+    assert sum(not r.resumed for r in results) == 1
+    assert len({r.thread_id for r in results}) == 1
+    count = on_own_connection(
+        lambda c: c.execute(text("SELECT COUNT(*) FROM attempts")).scalar_one()
+    )
+    assert count == 1

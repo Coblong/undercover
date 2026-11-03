@@ -1,4 +1,4 @@
-"""Run the agent on the waiting claims, or on one claim: uv run -m agent --help"""
+"""Run the agent on one claim: uv run -m agent --help"""
 
 import argparse
 import json
@@ -31,62 +31,16 @@ def work(claim_id: str) -> None:
     report(claim_id)
 
 
-def claims_in(*states: str) -> list[str]:
-    """Return the ids of the claims in any of these states."""
-    claims = json.loads(call("GET", "/api/claims"))
-    return [c["claim_id"] for c in claims if c["state"] in states]
-
-
-def waiting_claims() -> list[str]:
-    """Return the ids of the waiting claims."""
-    return claims_in("waiting")
-
-
-def work_queue(limit: int | None) -> None:
-    """Start a run, wait for it, and report each claim it took up.
-
-    A run first carries on the claims a stopped agent left in progress, and a run
-    left going is finished by this one.
-    """
-    before = claims_in("waiting", "in_progress")
-    latest = json.loads(call("GET", "/api/runs/latest"))
-    stopped = latest if latest and latest["state"] == "running" else None
-    if not before and not stopped:
-        print("No claims are waiting.")
-        return
-    started = call("POST", "/api/runs", {"limit": limit or len(before) or 1})
-    if started.startswith("Error"):
-        print(started)
-        return
-    if stopped:
-        print(f"Carrying on run {stopped['run_id']}.")
-    while (run := json.loads(call("GET", "/api/runs/latest")))["state"] == "running":
-        time.sleep(2)
-    still_waiting = set(waiting_claims())
-    for claim_id in before:
-        if claim_id not in still_waiting:
-            report(claim_id)
-    print(f"Run {run['state']}: {run['summary']}")
-
-
 def main() -> None:
     """Read the command line and run the agent."""
     parser = argparse.ArgumentParser(
-        description="Run the UnderCover Agent through the backend."
-        " With no claim id it works the waiting claims as one run."
+        description="Run the UnderCover Agent through the backend on one claim,"
+        " carrying it on if it was stopped. Dispatches start from the dashboard."
     )
-    parser.add_argument("claim_id", nargs="?", help="a claim id such as CLM-1001")
-    parser.add_argument(
-        "--limit", type=int, help="work at most this many claims in the run"
-    )
+    parser.add_argument("claim_id", help="a claim id such as CLM-1001")
     args = parser.parse_args()
     load_environment()
-    if args.claim_id and args.limit:
-        parser.error("give a claim id or --limit, not both")
-    if args.claim_id:
-        work(args.claim_id)
-    else:
-        work_queue(args.limit)
+    work(args.claim_id)
 
 
 if __name__ == "__main__":
