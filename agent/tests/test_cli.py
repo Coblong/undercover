@@ -1,4 +1,5 @@
 import sys
+from contextlib import closing
 
 import pytest
 from fastapi.testclient import TestClient
@@ -96,7 +97,8 @@ def test_a_run_that_cannot_start_is_reported(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ):
-    runs.create(connect(), 1)
+    with closing(connect()) as conn:
+        runs.create(conn, 1)
     run_cli(monkeypatch)
     assert capsys.readouterr().out.startswith("Error 409: A run is already going")
 

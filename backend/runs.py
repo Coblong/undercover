@@ -1,83 +1,97 @@
 """A run of the queue agent: its limit, its to-do list and when it may finish."""
 
-import sqlite3
-
 from fastapi import HTTPException
+from sqlalchemy import Connection, delete, func, insert, select, update
 
 from backend import queries
+from backend import tables as t
 from backend.db import now, transaction
 from backend.models import Run, Todo
 
 SHOWN = 10
 
 
-def get_run(conn: sqlite3.Connection, run_id: int) -> Run:
-    """Return a run with its to-do list, or raise a 404."""
-    row = conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
+def get_run(conn: Connection, run_id: int, lock: bool = False) -> Run:
+    """Return a run with its to-do list, or raise a 404. With `lock`, hold its row."""
+    query = select(t.runs).where(t.runs.c.id == run_id)
+    row = conn.execute(query.with_for_update() if lock else query).first()
     if row is None:
         raise queries.not_found("run", str(run_id))
     todos = conn.execute(
-        "SELECT text, status FROM todos WHERE run_id = ? ORDER BY position", (run_id,)
-    )
+        select(t.todos.c.text, t.todos.c.status)
+        .where(t.todos.c.run_id == run_id)
+        .order_by(t.todos.c.position)
+    ).mappings()
     return Run(
-        run_id=row["id"],
-        limit=row["claim_limit"],
-        state=row["state"],
-        summary=row["summary"],
-        started_at=row["started_at"],
-        ended_at=row["ended_at"],
+        run_id=row.id,
+        limit=row.claim_limit,
+        state=row.state,
+        summary=row.summary,
+        started_at=row.started_at,
+        ended_at=row.ended_at,
         todos=[Todo.model_validate(dict(todo)) for todo in todos],
     )
 
 
-def get_latest(conn: sqlite3.Connection) -> Run | None:
+def get_latest(conn: Connection) -> Run | None:
     """Return the most recent run, or None before the first."""
-    row = conn.execute("SELECT MAX(id) AS id FROM runs").fetchone()
-    return None if row["id"] is None else get_run(conn, row["id"])
+    latest = conn.execute(select(func.max(t.runs.c.id))).scalar_one()
+    return None if latest is None else get_run(conn, latest)
 
 
-def create(conn: sqlite3.Connection, limit: int) -> Run:
+def create(conn: Connection, limit: int) -> Run:
     """Start a run, unless one is already going."""
     with transaction(conn):
-        if conn.execute("SELECT 1 FROM runs WHERE state = 'running'").fetchone():
+        if conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).first():
             raise HTTPException(409, "A run is already going")
-        cursor = conn.execute(
-            "INSERT INTO runs (claim_limit, state, summary, started_at)"
-            " VALUES (?, 'running', '', ?)",
-            (limit, now()),
-        )
-    return get_run(conn, cursor.lastrowid or 0)
+        run_id = conn.execute(
+            insert(t.runs)
+            .values(claim_limit=limit, state="running", summary="", started_at=now())
+            .returning(t.runs.c.id)
+        ).scalar_one()
+    return get_run(conn, run_id)
 
 
-def running_run(conn: sqlite3.Connection, run_id: int) -> Run:
+def running_run(conn: Connection, run_id: int, lock: bool = False) -> Run:
     """Return a run that is still going, or raise a 409."""
-    run = get_run(conn, run_id)
+    run = get_run(conn, run_id, lock)
     if run.state != "running":
         raise HTTPException(409, f"Run {run_id} has already {run.state}")
     return run
 
 
-def write_todos(conn: sqlite3.Connection, run_id: int, todos: list[Todo]) -> Run:
+def write_todos(conn: Connection, run_id: int, todos: list[Todo]) -> Run:
     """Replace a run's to-do list."""
     with transaction(conn):
-        running_run(conn, run_id)
-        conn.execute("DELETE FROM todos WHERE run_id = ?", (run_id,))
-        conn.executemany(
-            "INSERT INTO todos VALUES (?, ?, ?, ?)",
-            [(run_id, i, todo.text, todo.status) for i, todo in enumerate(todos)],
-        )
+        running_run(conn, run_id, lock=True)
+        conn.execute(delete(t.todos).where(t.todos.c.run_id == run_id))
+        if todos:
+            conn.execute(
+                insert(t.todos),
+                [
+                    {
+                        "run_id": run_id,
+                        "position": i,
+                        "text": todo.text,
+                        "status": todo.status,
+                    }
+                    for i, todo in enumerate(todos)
+                ],
+            )
     return get_run(conn, run_id)
 
 
-def worked(conn: sqlite3.Connection, run_id: int) -> set[str]:
+def worked(conn: Connection, run_id: int) -> set[str]:
     """Return the claims a run has started."""
-    rows = conn.execute("SELECT claim_id FROM attempts WHERE run_id = ?", (run_id,))
-    return {row["claim_id"] for row in rows}
+    rows = conn.execute(
+        select(t.attempts.c.claim_id).where(t.attempts.c.run_id == run_id)
+    )
+    return {row.claim_id for row in rows}
 
 
-def check_can_start(conn: sqlite3.Connection, run_id: int, claim_id: str) -> None:
+def check_can_start(conn: Connection, run_id: int, claim_id: str) -> None:
     """Refuse to start a new claim once a run has reached its limit."""
-    run = running_run(conn, run_id)
+    run = running_run(conn, run_id, lock=True)
     started = worked(conn, run_id)
     if claim_id not in started and len(started) >= run.limit:
         raise HTTPException(
@@ -87,37 +101,40 @@ def check_can_start(conn: sqlite3.Connection, run_id: int, claim_id: str) -> Non
         )
 
 
-def missed_claims(conn: sqlite3.Connection, run_id: int) -> list[str]:
+def missed_claims(conn: Connection, run_id: int) -> list[str]:
     """Return the waiting claims the run should still work."""
     run = get_run(conn, run_id)
     started = worked(conn, run_id)
     waiting = conn.execute(
-        "SELECT claim_id FROM claims WHERE state = 'waiting' ORDER BY claim_id"
+        select(t.claims.c.claim_id)
+        .where(t.claims.c.state == "waiting")
+        .order_by(t.claims.c.claim_id)
     )
-    ids = [row["claim_id"] for row in waiting]
+    ids = [row.claim_id for row in waiting]
     if len(started) < run.limit:
         return ids
     return [claim_id for claim_id in ids if claim_id in started]
 
 
-def set_ended(conn: sqlite3.Connection, run_id: int, state: str, summary: str) -> None:
+def set_ended(conn: Connection, run_id: int, state: str, summary: str) -> None:
     """Close a run. The caller holds the transaction."""
     conn.execute(
-        "UPDATE runs SET state = ?, summary = ?, ended_at = ? WHERE id = ?",
-        (state, summary, now(), run_id),
+        update(t.runs)
+        .where(t.runs.c.id == run_id)
+        .values(state=state, summary=summary, ended_at=now())
     )
 
 
-def end(conn: sqlite3.Connection, run_id: int, state: str, summary: str) -> None:
+def end(conn: Connection, run_id: int, state: str, summary: str) -> None:
     """Close a run."""
     with transaction(conn):
         set_ended(conn, run_id, state, summary)
 
 
-def finish(conn: sqlite3.Connection, run_id: int, summary: str) -> Run:
+def finish(conn: Connection, run_id: int, summary: str) -> Run:
     """End a run with the agent's summary, unless it has missed a waiting claim."""
     with transaction(conn):
-        running_run(conn, run_id)
+        running_run(conn, run_id, lock=True)
         missed = missed_claims(conn, run_id)
         if missed:
             more = f" and {len(missed) - SHOWN} more" if len(missed) > SHOWN else ""
@@ -130,10 +147,10 @@ def finish(conn: sqlite3.Connection, run_id: int, summary: str) -> Run:
     return get_run(conn, run_id)
 
 
-def close_if_running(conn: sqlite3.Connection, run_id: int, error: str | None) -> None:
+def close_if_running(conn: Connection, run_id: int, error: str | None) -> None:
     """Fail a run whose agent stopped without finishing it."""
     with transaction(conn):
-        if get_run(conn, run_id).state == "running":
+        if get_run(conn, run_id, lock=True).state == "running":
             set_ended(
                 conn,
                 run_id,
@@ -142,7 +159,8 @@ def close_if_running(conn: sqlite3.Connection, run_id: int, error: str | None) -
             )
 
 
-def recover(conn: sqlite3.Connection) -> None:
+def recover(conn: Connection) -> None:
     """Fail the runs left going by a backend that stopped."""
-    for row in conn.execute("SELECT id FROM runs WHERE state = 'running'").fetchall():
-        end(conn, row["id"], "failed", "The backend stopped during this run.")
+    running = conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).all()
+    for row in running:
+        end(conn, row.id, "failed", "The backend stopped during this run.")

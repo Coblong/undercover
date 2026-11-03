@@ -1,13 +1,13 @@
 """The UnderCover backend."""
 
 import logging
-import sqlite3
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, closing
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from backend import api_claims, api_runs, attempts, runs
 from backend.db import connect, init_db
@@ -42,8 +42,8 @@ def invalid(_: Request, exc: RequestValidationError) -> JSONResponse:
     return JSONResponse(status_code=422, content={"detail": detail})
 
 
-@app.exception_handler(sqlite3.IntegrityError)
-def conflict(_: Request, exc: sqlite3.IntegrityError) -> JSONResponse:
+@app.exception_handler(IntegrityError)
+def conflict(_: Request, exc: IntegrityError) -> JSONResponse:
     """Report a change the database refused as a conflict, not a crash."""
     return JSONResponse(
         status_code=409, content={"detail": "That conflicts with a change already made"}

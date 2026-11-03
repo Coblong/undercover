@@ -16,6 +16,7 @@ export default defineConfig({
       command: "uv run -m uvicorn backend.main:app --port 8001",
       env: {
         UNDERCOVER_DB: databasePath(),
+        DATABASE_URL: "",
         BACKEND_URL: "http://127.0.0.1:8001",
       },
       url: "http://127.0.0.1:8001/api/health",

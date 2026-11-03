@@ -139,13 +139,13 @@ Moves the backend's records to a database that is the same code on SQLite and Po
 
 Success criteria:
 
-- [ ] Every existing backend test passes unchanged in meaning on SQLite, including the concurrency tests (one decision, one payment, one sign-off, one attempt, one run, and a run never starting more claims than its limit).
-- [ ] Tests: the engine URL is chosen from `DATABASE_URL`; Postgres gets a connection pool of 3 with 1 overflow and the search path; an empty `DATABASE_URL` means SQLite; starting twice does not duplicate rows; the seed still counts 25 claims, 50 policies, 49 customers and 3 handlers.
-- [ ] `npm run types:check` passes, since no model changed.
-- [ ] Live: `npm run seed` creates the schema on Supabase. Through the Supabase MCP server, `list_tables` for `undercover` shows every table with 25, 50, 49 and 3 rows, and `public` has none of ours. Running `npm run seed` again leaves the same counts.
-- [ ] Live: the backend on Supabase (`npm run dev:backend`) answers `GET /api/claims` with 25 waiting claims. A throwaway walk through the API (decide $1,250, a blocked payment, sign-off, payment) on one claim gives the same answers as on SQLite. Then reseed.
-- [ ] Live: `pg_stat_activity` for user postgres, through the MCP server, shows at most 4 connections from the backend while it works.
-- [ ] `npm run check:python` passes, with `.env` moved out of the way.
+- [x] Every existing backend test passes unchanged in meaning on SQLite, including the concurrency tests (one decision, one payment, one sign-off, one attempt, one run, and a run never starting more claims than its limit).
+- [x] Tests: the engine URL is chosen from `DATABASE_URL`; Postgres gets a connection pool of 3 with 1 overflow and the search path; an empty `DATABASE_URL` means SQLite; starting twice does not duplicate rows; the seed still counts 25 claims, 50 policies, 49 customers and 3 handlers.
+- [x] `npm run types:check` passes, since no model changed.
+- [x] Live: `npm run seed` creates the schema on Supabase. Through the Supabase MCP server, `list_tables` for `undercover` shows every table with 25, 50, 49 and 3 rows, and `public` has none of ours. Running `npm run seed` again leaves the same counts.
+- [x] Live: the backend on Supabase (`npm run dev:backend`) answers `GET /api/claims` with 25 waiting claims. A throwaway walk through the API (decide $1,250, a blocked payment, sign-off, payment) on one claim gives the same answers as on SQLite. Then reseed.
+- [x] Live: `pg_stat_activity` for user postgres, through the MCP server, shows at most 4 connections from the backend while it works.
+- [x] `npm run check:python` passes, with `.env` moved out of the way.
 
 ## Phase 3: The rules for work that waits and survives
 

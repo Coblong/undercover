@@ -1,16 +1,18 @@
 """Doing the agents' work: running them, ending the attempt and telling the story."""
 
 import logging
-import sqlite3
 import time
 from collections.abc import Callable
 from contextlib import closing
 from uuid import uuid4
 
+from sqlalchemy import Connection, select
+
 from agent.main import run as run_claim
 from agent.queue import run_queue
 from agent.settings import AgentError
 from backend import queries, runs
+from backend import tables as t
 from backend.attempts import end_attempt
 from backend.db import connect
 from backend.decisions import money
@@ -77,7 +79,7 @@ def execute_queue(run_id: int, agent: QueueAgent) -> None:
         runs.close_if_running(conn, run_id, error)
 
 
-def result_line(conn: sqlite3.Connection, claim_id: str) -> str:
+def result_line(conn: Connection, claim_id: str) -> str:
     """Say in one line how the work on a claim ended, for the queue agent."""
     claim = queries.get_claim(conn, claim_id)
     decision = claim.decision
@@ -85,13 +87,12 @@ def result_line(conn: sqlite3.Connection, claim_id: str) -> str:
         return f"{claim_id} failed twice and is left for a handler."
     if claim.state == "waiting" or decision is None:
         problem = conn.execute(
-            "SELECT text FROM steps WHERE claim_id = ? AND kind = 'error'"
-            " ORDER BY id DESC LIMIT 1",
-            (claim_id,),
-        ).fetchone()
-        return (
-            f"{claim_id} failed ({problem['text']}) and is waiting to be tried again."
-        )
+            select(t.steps.c.text)
+            .where(t.steps.c.claim_id == claim_id, t.steps.c.kind == "error")
+            .order_by(t.steps.c.id.desc())
+            .limit(1)
+        ).scalar_one()
+        return f"{claim_id} failed ({problem}) and is waiting to be tried again."
     line = f"{claim_id} decided: {decision.decision}"
     if decision.decision != "approve":
         return line + "."

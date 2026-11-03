@@ -1,4 +1,3 @@
-import sqlite3
 import threading
 from collections.abc import Callable
 from pathlib import Path
@@ -6,6 +5,7 @@ from typing import Any
 
 import pytest
 from fastapi import HTTPException
+from sqlalchemy import Connection, text
 
 from backend import attempts, decisions, runs
 from backend.db import connect, init_db
@@ -26,7 +26,7 @@ def decision(kind: str = "approve", payout: float = 420) -> DecisionRequest:
     )
 
 
-def on_own_connection(action: Callable[[sqlite3.Connection], Any]) -> Any:
+def on_own_connection(action: Callable[[Connection], Any]) -> Any:
     conn = connect()
     try:
         return action(conn)
@@ -34,7 +34,7 @@ def on_own_connection(action: Callable[[sqlite3.Connection], Any]) -> Any:
         conn.close()
 
 
-def race(action: Callable[[sqlite3.Connection], Any]) -> list[Any]:
+def race(action: Callable[[Connection], Any]) -> list[Any]:
     """Run an action in several threads at once, each on its own connection."""
     barrier = threading.Barrier(THREADS)
     results: list[Any] = []
@@ -76,7 +76,7 @@ def test_one_payment_wins(database: None):
         race(lambda c: decisions.pay(c, "CLM-1001", PaymentRequest(amount=420)))
     )
     count = on_own_connection(
-        lambda c: c.execute("SELECT COUNT(*) FROM payments").fetchone()[0]
+        lambda c: c.execute(text("SELECT COUNT(*) FROM payments")).scalar_one()
     )
     assert count == 1
 
@@ -109,7 +109,7 @@ def test_a_run_never_starts_more_claims_than_its_limit(database: None):
     claims = iter(f"CLM-10{n:02d}" for n in range(1, 40))
     lock = threading.Lock()
 
-    def start(conn: sqlite3.Connection) -> Any:
+    def start(conn: Connection) -> Any:
         with lock:
             claim_id = next(claims)
         return attempts.start_attempt(conn, claim_id, run_id)

@@ -4,6 +4,7 @@ from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import Connection
 
 from backend import attempts as attempt_rules
 from backend.db import connect
@@ -144,7 +145,7 @@ def test_a_failure_inside_end_attempt_changes_nothing(
     conn = connect()
     attempt_rules.start_attempt(conn, "CLM-1001")
 
-    def fail(conn: sqlite3.Connection, claim_id: str) -> int:
+    def fail(conn: Connection, claim_id: str) -> int:
         raise RuntimeError("database is locked")
 
     real = attempt_rules.failed_attempts
