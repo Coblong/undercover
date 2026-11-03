@@ -26,6 +26,11 @@ def model_name() -> str | None:
     return os.getenv("MODEL_NAME") or None
 
 
+def langfuse_configured() -> bool:
+    """Say whether the Langfuse keys are set, so claims are traced."""
+    return bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
+
+
 def api_key() -> str:
     """Return the OpenRouter key, or say clearly that it is missing."""
     key = os.getenv("OPENROUTER_API_KEY")

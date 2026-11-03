@@ -41,6 +41,27 @@ def test_read_tools():
     assert "Trip Delay" in section
 
 
+def test_the_payout_tool_uses_the_rules_for_its_claim():
+    lines = [
+        {
+            "description": "Hotel",
+            "amount": 420,
+            "quantity": 1,
+            "kind": "expense",
+            "nights": 0,
+            "hours": 0,
+        }
+    ]
+    result = tools_for()["calculate_payout"].invoke(
+        {"benefit": "trip_delay", "lines": lines, "paid_by_others": 0}
+    )
+    assert json.loads(result)["payout"] == 420
+    refused = tools_for("CLM-9999")["calculate_payout"].invoke(
+        {"benefit": "trip_delay", "lines": lines, "paid_by_others": 0}
+    )
+    assert refused.startswith("Error 404")
+
+
 def test_tools_return_the_reason_when_the_backend_refuses():
     assert tools_for("CLM-9999")["get_claim"].invoke({}).startswith("Error 404")
     assert tools_for("CLM-9999")["get_policy"].invoke({}).startswith("Error 404")
@@ -117,6 +138,31 @@ def test_run_approves_and_pays(client: TestClient):
     ]
     assert steps(client)[0]["text"] == "get_claim()"
     assert steps(client)[-1]["text"] == "Approved, $420.00."
+
+
+def test_the_payout_tool_result_reaches_the_model(client: TestClient):
+    line = {
+        "description": "Hotel",
+        "amount": 420,
+        "quantity": 1,
+        "kind": "expense",
+        "nights": 0,
+        "hours": 0,
+    }
+    main.run(
+        "CLM-1001",
+        "thread-8",
+        stub(
+            calls(
+                (
+                    "calculate_payout",
+                    {"benefit": "trip_delay", "lines": [line], "paid_by_others": 0},
+                )
+            ),
+            AIMessage(content="Worked out."),
+        ),
+    )
+    assert '"payout":420.0' in steps(client)[1]["text"]
 
 
 def test_run_declines(client: TestClient):

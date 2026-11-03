@@ -17,9 +17,9 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool
 from langchain_openai import ChatOpenAI
-from pydantic import SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
-from agent import settings
+from agent import settings, tracing
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,33 @@ CALL_LIMIT = 40
 RETRY_DELAY = 1.0
 CONNECT_TRIES = 3
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
+
+
+class PayoutLine(BaseModel):
+    """One covered item or expense on a claim."""
+
+    description: str = Field(description="What the item or expense is")
+    amount: float = Field(
+        description="The total claimed for the line in US dollars, before any limits."
+        " For several items, the total for all of them"
+    )
+    quantity: int = Field(
+        description="How many separate items the line holds. A pair or a set is one"
+        " item. Send 1 for anything else"
+    )
+    kind: Literal[
+        "item", "electronics", "cash", "expense", "hotel", "meals_without_receipts"
+    ] = Field(
+        description="item: a belonging, or a pair or set. electronics: only a phone,"
+        " tablet, laptop, camera or its lens, e-reader or smartwatch. cash: cash lost"
+        " or stolen. expense: any other cost with a receipt. hotel: a hotel during a"
+        " trip delay. meals_without_receipts: meals during a trip delay with no"
+        " receipts"
+    )
+    nights: int = Field(description="For a hotel, the nights. Send 0 otherwise")
+    hours: float = Field(
+        description="For meals without receipts, the hours of delay. Send 0 otherwise"
+    )
 
 
 def backend(timeout: float = 30) -> httpx.Client:
@@ -128,6 +155,33 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
         return call("POST", f"/api/claims/{claim_id}/decision", body)
 
     @tool
+    def calculate_payout(
+        benefit: Literal[
+            "trip_cancellation",
+            "trip_interruption",
+            "trip_delay",
+            "baggage_delay",
+            "baggage",
+            "passport",
+            "emergency_medical",
+        ],
+        lines: list[PayoutLine],
+        paid_by_others: float,
+    ) -> str:
+        """Work out the payout on an approved claim with UnderCover's payout rules.
+
+        Send each covered item or expense as a line and leave out the excluded
+        ones. paid_by_others is anything a carrier, hotel or other party has paid or
+        refunded for the same loss, or 0. It returns the calculation and the payout.
+        """
+        body = {
+            "benefit": benefit,
+            "lines": [line.model_dump() for line in lines],
+            "paid_by_others": paid_by_others,
+        }
+        return call("POST", f"/api/claims/{claim_id}/payout", body)
+
+    @tool
     def pay_claim(amount: float) -> str:
         """Pay your approved claim exactly its approved payout."""
         return call("POST", f"/api/claims/{claim_id}/payment", {"amount": amount})
@@ -138,6 +192,7 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
         get_claim_history,
         list_document_sections,
         get_document_section,
+        calculate_payout,
         decide_claim,
         pay_claim,
     ]
@@ -195,7 +250,7 @@ def run(claim_id: str, thread_id: str, llm: BaseChatModel | None = None) -> str:
     reply = ""
     for update in agent.stream(
         {"messages": [{"role": "user", "content": f"Decide claim {claim_id}."}]},
-        config={"configurable": {"thread_id": thread_id}},
+        config=tracing.config_for(thread_id),  # pyright: ignore[reportArgumentType]
         stream_mode="updates",
     ):
         for node in update.values():
@@ -213,4 +268,5 @@ def run(claim_id: str, thread_id: str, llm: BaseChatModel | None = None) -> str:
                         logger.warning("Step not recorded on %s: %s", claim_id, answer)
                 if isinstance(message, AIMessage):
                     reply = message.text
+    tracing.flush()
     return reply
