@@ -46,6 +46,17 @@ The results were not compared with `data/evals/`.
 
 After the quality build (`docs/PLAN_QUALITY.md`) the same run, reseeded and capped at five, finished with no failed attempt and no call refused by the new checks: CLM-1003 (approved $3,750.00, held for sign-off), CLM-1004 (approved $186.00, paid), CLM-1013 (declined) and CLM-1023 and CLM-1025 (referred). Before the instructions told the model to give the policy section as a bare number and title, three of five first decisions were refused (a note had been added to the section name); the agent corrected each one itself.
 
+## Checked live (durable build)
+
+On 3 November 2026, on Supabase with the default model (`deepseek/deepseek-v4.1-flash`, low reasoning), after `npm run seed`:
+
+- `uv run -m agent --limit 5` worked five claims with no failed attempt: CLM-1001 (approved $420.00, paid), CLM-1003 (approved $3,750.00, held for sign-off, no payment), CLM-1004 (approved $186.00, paid), CLM-1005 (approved $243.00, paid) and CLM-1016 (declined). The agent called `calculate_payout` on each approval.
+- A handler signed CLM-1003 off (`HND-01`) and CLM-1008, a second held claim ($2,240.00), on the dashboard in a real browser. CLM-1003 was paid one second after the sign-off, and CLM-1008 two to three seconds after the click, showing "In progress" with "The agent is paying it" in between, then "Decided" with the handler and the time, in light and dark mode. Each payment recorded the handler and time. Each held claim's thread has one attempt on the first run and a second on the sign-off, with the same thread, and neither failed.
+- Through Langfuse (`GET /api/public/v2/observations`, filtered on the session), each held claim's session (such as `CLM-1008-fe577c55`) has one trace for the model's work before the pause and one (`approval`, `pay`) after the sign-off.
+- After a second `npm run seed`, `npm run dev` and `uv run -m agent --limit 5` were killed with `kill -9` after the first six steps of CLM-1013. In Supabase that claim was `in_progress`, with an open attempt on thread `CLM-1013-bc3a6827`, 7 checkpoints in `undercover.checkpoints`, no decision, and run 1 still `running`. After restarting, `uv run -m agent --limit 5` printed `Carrying on run 1.`, finished CLM-1013 first (declined) on the same thread, and went on to four more claims, so the run reached its limit of five. CLM-1013 still had one attempt (not failed), one decision and no repeated step, and only one run existed.
+- `pg_stat_activity` for the postgres user, through the Supabase MCP server, showed 7 to 8 connections each time it was sampled while the runs worked (it was not watched continuously), counting the three Supabase and the MCP server hold themselves, against a limit of 12. After 60 requests at once the backend held 3.
+- Results were not compared with `data/evals/`.
+
 ## Open items
 
 - Payouts may vary between runs of the same claim, because the model chooses the lines it sends to `calculate_payout`. Scoring the agent against `data/evals/` is for a later build.
