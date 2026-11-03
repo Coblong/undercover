@@ -57,6 +57,20 @@ createServer(async (request, response) => {
       { concurrency, model: "stand-in", reasoning_effort: "none" },
       response,
     );
+  } else if (request.method === "POST" && url.pathname === "/evaluations") {
+    const { concurrency, eval_set: evalSet, tiny } = await readBody(request);
+    started.push({ kind: "evaluation", concurrency, eval_set: evalSet, tiny });
+    await startRun(
+      "/api/runs/evaluation",
+      {
+        concurrency,
+        eval_set: evalSet,
+        tiny,
+        model: "stand-in",
+        reasoning_effort: "none",
+      },
+      response,
+    );
   } else if (request.method === "POST" && work) {
     const { thread_id: threadId } = await readBody(request);
     received.push({ claim_id: work[1], thread_id: threadId });

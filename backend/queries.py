@@ -40,8 +40,12 @@ def summaries():
 
 
 def list_claims(conn: Connection) -> list[ClaimSummary]:
-    """Return every claim, oldest id first."""
-    rows = conn.execute(summaries().order_by(t.claims.c.claim_id)).mappings()
+    """Return every claim in the queue, oldest id first, without evaluation copies."""
+    rows = conn.execute(
+        summaries()
+        .where(t.claims.c.evaluation_id.is_(None))
+        .order_by(t.claims.c.claim_id)
+    ).mappings()
     return [ClaimSummary.model_validate(dict(row)) for row in rows]
 
 
@@ -55,6 +59,16 @@ def claim_state(conn: Connection, claim_id: str, lock: bool = False) -> str:
     if row is None:
         raise not_found("claim", claim_id)
     return row.state
+
+
+def claim_evaluation(conn: Connection, claim_id: str) -> int | None:
+    """Return the evaluation a claim is a copy for, or None for a queue claim."""
+    row = conn.execute(
+        select(t.claims.c.evaluation_id).where(t.claims.c.claim_id == claim_id)
+    ).first()
+    if row is None:
+        raise not_found("claim", claim_id)
+    return row.evaluation_id
 
 
 def get_claim(conn: Connection, claim_id: str) -> ClaimDetail:
@@ -123,12 +137,15 @@ def get_claim_history(conn: Connection, claim_id: str) -> ClaimHistory:
     """Return the customer's claims filed before this one, with their outcomes.
 
     That is the earlier claims the customer came with, and every claim in this
-    system filed earlier, decided or not.
+    system filed earlier, decided or not. A claim sees only its own world: the
+    queue's claims, or the copies of its own evaluation.
     """
     claim = conn.execute(
-        select(t.claims.c.customer_id, t.claims.c.submitted_on).where(
-            t.claims.c.claim_id == claim_id
-        )
+        select(
+            t.claims.c.customer_id,
+            t.claims.c.submitted_on,
+            t.claims.c.evaluation_id,
+        ).where(t.claims.c.claim_id == claim_id)
     ).first()
     if claim is None:
         raise not_found("claim", claim_id)
@@ -152,6 +169,7 @@ def get_claim_history(conn: Connection, claim_id: str) -> ClaimHistory:
         .outerjoin(t.payments, t.payments.c.claim_id == t.claims.c.claim_id)
         .where(
             t.claims.c.customer_id == claim.customer_id,
+            t.claims.c.evaluation_id.is_not_distinct_from(claim.evaluation_id),
             tuple_(t.claims.c.submitted_on, t.claims.c.claim_id)
             < tuple_(claim.submitted_on, claim_id),
         )

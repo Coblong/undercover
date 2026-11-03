@@ -66,11 +66,15 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
             raise HTTPException(
                 409, f"Claim {claim_id} is already {state}, so it cannot be decided"
             )
-        claimed = conn.execute(
-            select(t.claims.c.amount_claimed).where(t.claims.c.claim_id == claim_id)
-        ).scalar_one()
+        claimed, evaluation_id = conn.execute(
+            select(t.claims.c.amount_claimed, t.claims.c.evaluation_id).where(
+                t.claims.c.claim_id == claim_id
+            )
+        ).one()
         check_decision(body, payout, claimed)
-        settled = attempts.settled_state(body.decision, payout)
+        settled = attempts.settled_state(
+            body.decision, payout, copy=evaluation_id is not None
+        )
         new_state: State = "in_progress" if state == "in_progress" else settled
         conn.execute(
             insert(t.decisions).values(
@@ -157,6 +161,12 @@ def sign_off(conn: Connection, claim_id: str, body: SignOffRequest) -> Outcome:
     """
     with transaction(conn):
         state = queries.claim_state(conn, claim_id, lock=True)
+        if queries.claim_evaluation(conn, claim_id) is not None:
+            raise HTTPException(
+                409,
+                f"Claim {claim_id} is a copy made for an evaluation,"
+                " so nobody can sign it off",
+            )
         if state != "waiting_for_sign_off":
             raise HTTPException(
                 409, f"Claim {claim_id} is {state}, not waiting for sign-off"

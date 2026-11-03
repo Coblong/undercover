@@ -59,6 +59,7 @@ export const claim: ClaimDetail = {
   payment: null,
   sign_off: null,
   needs_sign_off: false,
+  evaluation_id: null,
 };
 
 export const decidedClaim: ClaimDetail = {

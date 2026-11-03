@@ -8,7 +8,7 @@ import threading
 import time
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -44,6 +44,11 @@ class WorkResult(BaseModel):
 
 class DispatchRequest(BaseModel):
     concurrency: int = Field(ge=1, le=25)
+
+
+class EvaluationRequest(DispatchRequest):
+    eval_set: Literal["evaluation", "held_out"]
+    tiny: bool
 
 
 class Started(BaseModel):
@@ -221,3 +226,17 @@ def start_dispatch(body: DispatchRequest, work: Worker) -> Started:
         "reasoning_effort": effort,
     }
     return start_run("/api/runs/dispatch", run, body.concurrency, work)
+
+
+@app.post("/evaluations", status_code=202)
+def start_evaluation(body: EvaluationRequest, work: Worker) -> Started:
+    """Start an evaluation of a labelled set and say its id."""
+    model, effort = main.model_choice()
+    run = {
+        "concurrency": body.concurrency,
+        "eval_set": body.eval_set,
+        "tiny": body.tiny,
+        "model": model,
+        "reasoning_effort": effort,
+    }
+    return start_run("/api/runs/evaluation", run, body.concurrency, work)

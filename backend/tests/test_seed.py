@@ -16,6 +16,9 @@ ALLOWED_FILES = {
     "plans.json",
     "policy_wording.md",
     "claims_manual.md",
+    "decisions.json",
+    "held_out_claims.json",
+    "held_out_decisions.json",
     "instructions_claim.md",
 }
 

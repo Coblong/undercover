@@ -173,17 +173,42 @@ def reset_db() -> None:
 
 
 def seed(conn: Connection) -> None:
-    """Load claims, policies, customers and handlers. Every claim starts waiting."""
+    """Load claims, policies, customers and handlers. Every claim starts waiting.
+
+    The held-out claims and the handlers' decisions on both sets go in tables of
+    their own, which only the evaluations read.
+    """
     conn.execute(
         insert(t.claims),
         [
-            {
-                **{c.name: claim[c.name] for c in t.claims.c if c.name != "state"},
-                "state": "waiting",
-            }
+            {**{name: claim[name] for name in t.CLAIM_FIELDS}, "state": "waiting"}
             for claim in load("claims.json")
         ],
     )
+    conn.execute(
+        insert(t.held_out_claims),
+        [
+            {name: claim[name] for name in t.CLAIM_FIELDS}
+            for claim in load("evals/held_out_claims.json")
+        ],
+    )
+    for eval_set, name in (
+        ("evaluation", "evals/decisions.json"),
+        ("held_out", "evals/held_out_decisions.json"),
+    ):
+        conn.execute(
+            insert(t.answer_key),
+            [
+                {
+                    "eval_set": eval_set,
+                    "claim_id": key["claim_id"],
+                    "decision": key["decision"],
+                    "payout": float(key["payout"]),
+                    "tiny": bool(key["tiny"]),
+                }
+                for key in load(name)
+            ],
+        )
     conn.execute(
         insert(t.policies),
         [{"policy_id": p["policy_id"], "data": p} for p in load("policies.json")],

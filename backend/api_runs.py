@@ -4,17 +4,21 @@ import logging
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 
-from backend import attempts, queries, runs, work
-from backend.deps import ClaimAgent, Db, DispatchStarter
+from backend import attempts, evaluations, queries, runs, work
+from backend.deps import ClaimAgent, Db, DispatchStarter, EvaluationStarter
 from backend.models import (
     CreateDispatchRequest,
+    CreateEvaluationRequest,
     Dispatch,
     EndAttemptRequest,
     EndRunRequest,
+    Evaluation,
+    EvaluationDetail,
     Outcome,
     RunClaims,
     StartDispatchRequest,
     StartedClaim,
+    StartEvaluationRequest,
     StoppedRuns,
 )
 
@@ -28,6 +32,11 @@ def run_agent(
     claim_id: str, conn: Db, background: BackgroundTasks, agent: ClaimAgent
 ) -> Outcome:
     """Start the agent on a waiting claim."""
+    if queries.claim_evaluation(conn, claim_id) is not None:
+        raise HTTPException(
+            409,
+            f"Claim {claim_id} is a copy made for an evaluation, so only it runs it",
+        )
     resume = queries.claim_state(
         conn, claim_id
     ) == "in_progress" and not work.is_working(claim_id)
@@ -45,6 +54,33 @@ def start_dispatch(
 ) -> Dispatch:
     """Start a dispatch with this many claim agents at once, by asking the service."""
     return runs.get_dispatch(conn, starter(body.concurrency))
+
+
+@router.post("/api/evaluations", operation_id="start_evaluation", status_code=202)
+def start_evaluation(
+    body: StartEvaluationRequest, conn: Db, starter: EvaluationStarter
+) -> Evaluation:
+    """Start an evaluation of a labelled set, by asking the service."""
+    run_id = starter(body.concurrency, body.eval_set, body.tiny)
+    return evaluations.get_evaluation(conn, run_id)
+
+
+@router.get("/api/evaluations", operation_id="list_evaluations")
+def list_evaluations(conn: Db) -> list[Evaluation]:
+    """List the evaluations with their measures, newest first."""
+    return evaluations.list_evaluations(conn)
+
+
+@router.get("/api/evaluations/{run_id}", operation_id="get_evaluation")
+def get_evaluation(run_id: int, conn: Db) -> EvaluationDetail:
+    """Get one evaluation with its measures and each claim beside the handler's."""
+    return evaluations.get_detail(conn, run_id)
+
+
+@router.post("/api/runs/evaluation", operation_id="create_evaluation", status_code=201)
+def create_evaluation(body: CreateEvaluationRequest, conn: Db) -> Evaluation:
+    """Create an evaluation with copies of its claims, unless a run is going."""
+    return evaluations.create(conn, body)
 
 
 @router.post("/api/runs/dispatch", operation_id="create_dispatch", status_code=201)

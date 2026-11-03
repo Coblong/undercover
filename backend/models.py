@@ -77,6 +77,7 @@ class ClaimDetail(ClaimSummary):
     payment: Payment | None
     sign_off: SignOff | None
     needs_sign_off: bool
+    evaluation_id: int | None
 
 
 class Trip(BaseModel):
@@ -211,6 +212,7 @@ class StartedClaim(BaseModel):
     claim_id: str
     thread_id: str
     resumed: bool
+    evaluation: bool
 
 
 class StoppedRuns(BaseModel):
@@ -254,3 +256,61 @@ class Dispatch(BaseModel):
     cost: float
     claims: list[DispatchClaim]
     summary: DispatchSummary | None
+
+
+EvalSet = Literal["evaluation", "held_out"]
+
+
+class StartEvaluationRequest(BaseModel):
+    concurrency: int = Field(ge=1, le=25)
+    eval_set: EvalSet
+    tiny: bool
+
+
+class CreateEvaluationRequest(StartEvaluationRequest):
+    model: Label
+    reasoning_effort: Effort
+
+
+class Measures(BaseModel):
+    decision_accuracy: float
+    accuracy: float
+    cost_of_mistakes: float
+    straight_through: float
+    cost_per_claim: float
+    seconds_per_claim: float
+    run_seconds: float | None
+
+
+class Evaluation(BaseModel):
+    run_id: int
+    eval_set: EvalSet
+    tiny: bool
+    concurrency: int
+    model: str
+    reasoning_effort: str
+    state: RunState
+    started_at: str
+    ended_at: str | None
+    claim_count: int
+    measures: Measures
+
+
+class EvaluationClaim(BaseModel):
+    claim_id: str
+    source_id: str
+    state: State
+    handler_decision: Literal["approve", "decline", "refer"]
+    handler_payout: float
+    agent_decision: Literal["approve", "decline", "refer"] | None
+    agent_payout: float | None
+    reason: str | None
+    decision_matches: bool
+    right: bool
+    mistake_cost: float
+    cost: float
+    seconds: float
+
+
+class EvaluationDetail(Evaluation):
+    results: list[EvaluationClaim]

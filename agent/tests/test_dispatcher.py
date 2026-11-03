@@ -296,3 +296,57 @@ def test_the_worker_retries_only_rate_limits_and_timeouts():
         main.ModelRateLimitError,
         main.ModelTimeoutError,
     )
+
+
+def new_evaluation(client: TestClient, eval_set: str = "evaluation") -> int:
+    body = {
+        "concurrency": 5,
+        "eval_set": eval_set,
+        "tiny": True,
+        "model": "openai/gpt-6-luna",
+        "reasoning_effort": "low",
+    }
+    return client.post("/api/runs/evaluation", json=body).json()["run_id"]
+
+
+def test_an_evaluation_runs_through_the_same_dispatcher(
+    client: TestClient, tmp_path: Path
+):
+    queue_before = client.get("/api/claims").json()
+    run_id = new_evaluation(client)
+    meter = Meter()
+    dispatcher.run_dispatch(run_id, 5, meter)
+    assert sorted(meter.started) == sorted(
+        f"EV{run_id}-{c}"
+        for c in ("CLM-1007", "CLM-1015", "CLM-1017", "CLM-1020", "CLM-1021")
+    )
+    assert client.get("/api/claims").json() == queue_before
+
+
+def test_a_copy_held_for_a_sign_off_counts_as_finished_and_its_progress_is_cleared(
+    client: TestClient, tmp_path: Path
+):
+    run_id = new_evaluation(client)
+    copy = f"EV{run_id}-CLM-1015"
+    saver = InMemorySaver()
+    model = StubModel(messages=iter([calls(decision("approve", 1250))]))
+    work = only(copy, real_work(saver, model))
+    dispatcher.run_dispatch(run_id, 5, work, FAST)
+    held = client.get(f"/api/claims/{copy}").json()
+    assert held["state"] == "decided"
+    assert held["decision"]["payout"] == 1250
+    assert held["payment"] is None
+    ((thread,),) = rows(tmp_path, "SELECT thread_id FROM attempts")
+    assert saver.get_tuple({"configurable": {"thread_id": thread}}) is None
+    assert rows(tmp_path, "SELECT COUNT(*) FROM payments") == [(0,)]
+
+
+def test_a_queue_claim_held_for_a_sign_off_keeps_its_progress(
+    client: TestClient, tmp_path: Path
+):
+    run_id = new_dispatch(client)
+    saver = InMemorySaver()
+    model = StubModel(messages=iter([calls(decision("approve", 1250))]))
+    dispatcher.run_dispatch(run_id, 5, only("CLM-1003", real_work(saver, model)), FAST)
+    ((thread,),) = rows(tmp_path, "SELECT thread_id FROM attempts")
+    assert saver.get_tuple({"configurable": {"thread_id": thread}}) is not None

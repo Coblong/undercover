@@ -47,6 +47,7 @@ MODEL_TRIES = 3
 RETRY_DELAY = 1.0
 CONNECT_TRIES = 3
 clock = time.monotonic
+HELD = "waiting for sign-off"
 MODEL_TIMEOUT = 120
 MODEL_RETRIES = 5
 DOCUMENT_LABEL = {"wording": "Policy wording", "manual": "Claims manual"}
@@ -477,7 +478,7 @@ def run(
     finally:
         record_time(claim_id, run_id, clock() - started)
         tracing.flush()
-    return "waiting for sign-off" if "__interrupt__" in result else result["reply"]
+    return HELD if "__interrupt__" in result else result["reply"]
 
 
 class AlreadyWorking(Exception):
@@ -514,7 +515,9 @@ def work_claim(
     attempt, and a claim in progress carries on its open attempt on its thread.
     The claim gets a checkpointer of its own, so claims never take turns on one.
     A rate limit or a timeout passes through with the attempt left open, for a
-    retry to carry on as the same attempt. Any other error fails the attempt.
+    retry to carry on as the same attempt. Any other error fails the attempt. An
+    evaluation's copy that stopped at a held approval counts as finished, and its
+    saved progress is cleared since nobody can sign it off.
     A claim this process is already working is left alone.
     """
     try:
@@ -535,9 +538,12 @@ def settle(
     begun = call("POST", f"/api/runs/{run_id}/claims/{claim_id}/start")
     if begun.startswith("Error"):
         raise AgentError(begun)
+    thread_id = json.loads(begun)["thread_id"]
+    saver = new_saver()
     error = None
+    reply = ""
     try:
-        run(claim_id, json.loads(begun)["thread_id"], llm, new_saver(), run_id)
+        reply = run(claim_id, thread_id, llm, saver, run_id)
     except (ModelRateLimitError, ModelTimeoutError):
         raise
     except Exception as exc:  # the dispatch goes on, so the claim fails alone
@@ -547,6 +553,8 @@ def settle(
     if ended.startswith("Error"):
         raise AgentError(ended)
     state = json.loads(ended)["state"]
+    if json.loads(begun)["evaluation"] and reply == HELD:
+        saver.delete_thread(thread_id)  # a copy's held approval counts as finished
     logger.info(
         "Attempt ended: claim=%s run=%s state=%s failed=%s seconds=%.1f",
         claim_id,

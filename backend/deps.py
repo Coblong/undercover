@@ -13,3 +13,6 @@ ClaimAgent = Annotated[agent_service.ClaimAgent, Depends(agent_service.claim_age
 DispatchStarter = Annotated[
     agent_service.DispatchStarter, Depends(agent_service.dispatch_starter)
 ]
+EvaluationStarter = Annotated[
+    agent_service.EvaluationStarter, Depends(agent_service.evaluation_starter)
+]

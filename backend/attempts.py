@@ -21,9 +21,13 @@ UNFINISHED_TEXT: dict[Unfinished, str] = {
 }
 
 
-def settled_state(decision: str, payout: float) -> State:
-    """Return the state a claim rests in once it has this decision."""
-    if decision == "approve" and payout > payout_limit():
+def settled_state(decision: str, payout: float, copy: bool = False) -> State:
+    """Return the state a claim rests in once it has this decision.
+
+    An evaluation's copy is never held for a sign-off: nobody can sign it off, so
+    a held approval counts as finished.
+    """
+    if decision == "approve" and payout > payout_limit() and not copy:
         return "waiting_for_sign_off"
     return "decided"
 
@@ -109,6 +113,7 @@ def start_claim(conn: Connection, run_id: int, claim_id: str) -> StartedClaim:
         )
         if not member.rowcount and claim_id not in runs.claims_of(conn, run_id):
             raise HTTPException(409, f"Claim {claim_id} is not in run {run_id}")
+        evaluation = queries.claim_evaluation(conn, claim_id) is not None
         resumed = state == "in_progress"
         if resumed:
             thread_id = open_thread(conn, claim_id)
@@ -118,7 +123,9 @@ def start_claim(conn: Connection, run_id: int, claim_id: str) -> StartedClaim:
                 )
         else:
             thread_id = begin_attempt(conn, claim_id, state, run_id)
-    return StartedClaim(claim_id=claim_id, thread_id=thread_id, resumed=resumed)
+    return StartedClaim(
+        claim_id=claim_id, thread_id=thread_id, resumed=resumed, evaluation=evaluation
+    )
 
 
 def open_thread(conn: Connection, claim_id: str) -> str | None:
@@ -208,8 +215,13 @@ def end_attempt(conn: Connection, claim_id: str, error: str | None) -> State:
         )
         new_state: State
         if reason is None:
-            needs = queries.get_claim(conn, claim_id).needs_sign_off
-            new_state = "waiting_for_sign_off" if needs else "decided"
+            held = queries.get_claim(conn, claim_id)
+            copy = held.evaluation_id is not None
+            new_state = (
+                "waiting_for_sign_off"
+                if held.needs_sign_off and not copy
+                else "decided"
+            )
         elif failed_attempts(conn, claim_id) >= MAX_FAILED_ATTEMPTS:
             record_step(
                 conn,

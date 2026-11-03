@@ -14,6 +14,7 @@ UNREACHABLE = "The agent's service could not be reached."
 
 ClaimAgent = Callable[[str, str], str]
 DispatchStarter = Callable[[int], int]
+EvaluationStarter = Callable[[int, str, bool], int]
 
 
 class AgentStopped(Exception):
@@ -78,3 +79,14 @@ def start_dispatch(concurrency: int) -> int:
 def dispatch_starter() -> DispatchStarter:
     """Return the function that starts a dispatch. Tests replace it."""
     return start_dispatch
+
+
+def start_evaluation(concurrency: int, eval_set: str, tiny: bool) -> int:
+    """Ask the service to start an evaluation of a labelled set."""
+    body = {"concurrency": concurrency, "eval_set": eval_set, "tiny": tiny}
+    return start("/evaluations", body)
+
+
+def evaluation_starter() -> EvaluationStarter:
+    """Return the function that starts an evaluation. Tests replace it."""
+    return start_evaluation

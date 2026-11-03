@@ -189,16 +189,16 @@ Builds the answer key, the copies, their rules and the scoring in the backend an
 
 Success criteria:
 
-- [ ] Seed tests: the 25 held-out claims are in `held_out_claims` and not in `claims`, `answer_key` has 25 rows for each set with the `tiny` flags, and the queue still has 25 claims. Only the three allowed files are read.
-- [ ] A test fails if any module but `evaluations.py`, `db.py` (seeding) and `tables.py` mentions `answer_key` or `held_out_claims`.
-- [ ] An evaluation of the five `tiny` claims of the held-out set makes five copies with new ids, `list_claims` is unchanged, a dispatch's plan never lists a copy, and `get_claim` on a copy has no field from the handlers' decisions.
-- [ ] A copy's claim history shows only its own evaluation's earlier claims, and a queue claim's history shows no copy. `CLM-1005` and `CLM-1006` still see each other in an evaluation of the whole set.
-- [ ] A copy approved over $1,000 ends `decided` with its payment unmade, its thread's saved progress is deleted, and `sign_off_claim` and `run_agent` refuse it with a plain reason.
-- [ ] A stopped evaluation shows `stopped`, and its undecided claims count as referrals.
-- [ ] The measures for a small evaluation, worked by hand in the test, match: a right approval within $1.00, a payout $0.99 off, a wrongful decline, a wrongful approval that was never paid, a needless referral, an undecided claim, and a wrong amount on a right approval. The test covers `decision_accuracy`, `accuracy`, the cost of mistakes, the straight-through rate, cost per claim, time per claim and the run's time.
-- [ ] Each evaluation records its set, N, the model and the effort (`none` for `MODEL_NAME`), and for each claim the decision, payout, reason, cost and time. A dispatch's totals and an evaluation's stay separate when claims share a customer.
-- [ ] `start_evaluation` passes N, the set and `tiny` to the service and passes refusals through, and the service's start route behaves as the dispatch's does.
-- [ ] `npm run check:python` passes at 80% coverage and `npm run e2e` still passes. The phase is committed.
+- [x] Seed tests: the 25 held-out claims are in `held_out_claims` and not in `claims`, `answer_key` has 25 rows for each set with the `tiny` flags, and the queue still has 25 claims. Only the three allowed files are read.
+- [x] A test fails if any module but `evaluations.py`, `db.py` (seeding) and `tables.py` mentions `answer_key` or `held_out_claims`.
+- [x] An evaluation of the five `tiny` claims of the held-out set makes five copies with new ids, `list_claims` is unchanged, a dispatch's plan never lists a copy, and `get_claim` on a copy has no field from the handlers' decisions.
+- [x] A copy's claim history shows only its own evaluation's earlier claims, and a queue claim's history shows no copy. `CLM-1005` and `CLM-1006` still see each other in an evaluation of the whole set.
+- [x] A copy approved over $1,000 ends `decided` with its payment unmade, its thread's saved progress is deleted, and `sign_off_claim` and `run_agent` refuse it with a plain reason.
+- [x] A stopped evaluation shows `stopped`, and its undecided claims count as referrals.
+- [x] The measures for a small evaluation, worked by hand in the test, match: a right approval within $1.00, a payout $0.99 off, a wrongful decline, a wrongful approval that was never paid, a needless referral, an undecided claim, and a wrong amount on a right approval. The test covers `decision_accuracy`, `accuracy`, the cost of mistakes, the straight-through rate, cost per claim, time per claim and the run's time.
+- [x] Each evaluation records its set, N, the model and the effort (`none` for `MODEL_NAME`), and for each claim the decision, payout, reason, cost and time. A dispatch's totals and an evaluation's stay separate when claims share a customer.
+- [x] `start_evaluation` passes N, the set and `tiny` to the service and passes refusals through, and the service's start route behaves as the dispatch's does.
+- [x] `npm run check:python` passes at 80% coverage and `npm run e2e` still passes. The phase is committed.
 
 ## Phase 5: The Scoreboard page
 

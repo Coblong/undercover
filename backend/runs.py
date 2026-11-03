@@ -67,8 +67,9 @@ def create_dispatch(conn: Connection, body: CreateDispatchRequest) -> Dispatch:
 def plan(conn: Connection, run_id: int) -> RunClaims:
     """Return the claims a run works, choosing and recording them for a dispatch.
 
-    A dispatch works every claim in progress and every waiting claim, oldest
-    submitted first. Asking again returns the same claims.
+    A dispatch works every claim in progress and every waiting claim of the
+    queue, oldest submitted first, and never an evaluation's copy. An evaluation
+    already holds its copies. Asking again returns the same claims.
     """
     with transaction(conn):
         running_run(conn, run_id, lock=True)
@@ -76,7 +77,10 @@ def plan(conn: Connection, run_id: int) -> RunClaims:
         if not chosen:
             rows = conn.execute(
                 select(t.claims.c.claim_id)
-                .where(t.claims.c.state.in_(CLAIMS_TO_WORK))
+                .where(
+                    t.claims.c.state.in_(CLAIMS_TO_WORK),
+                    t.claims.c.evaluation_id.is_(None),
+                )
                 .order_by(t.claims.c.submitted_on, t.claims.c.claim_id)
             )
             chosen = [row.claim_id for row in rows]

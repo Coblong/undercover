@@ -16,6 +16,8 @@ export type ClaimSummaryState =
   | "decided"
   | "left_for_handler";
 
+export type CreateEvaluationRequestEvalSet = "evaluation" | "held_out";
+
 export type DecisionDecision = "approve" | "decline" | "refer";
 
 export type DecisionRequestDecision = "approve" | "decline" | "refer";
@@ -32,6 +34,26 @@ export type DispatchClaimState =
   | "left_for_handler";
 
 export type EndRunRequestState = "finished" | "failed";
+
+export type EvaluationEvalSet = "evaluation" | "held_out";
+
+export type EvaluationState = "running" | "finished" | "failed" | "stopped";
+
+export type EvaluationClaimAgentDecision = "approve" | "decline" | "refer";
+
+export type EvaluationClaimHandlerDecision = "approve" | "decline" | "refer";
+
+export type EvaluationClaimState =
+  | "waiting"
+  | "in_progress"
+  | "waiting_for_sign_off"
+  | "decided"
+  | "left_for_handler";
+
+export type EvaluationDetailEvalSet = "evaluation" | "held_out";
+
+export type EvaluationDetailState =
+  "running" | "finished" | "failed" | "stopped";
 
 export type LineKind =
   | "item"
@@ -61,6 +83,8 @@ export type PolicyPlan = "economy" | "premium" | "first";
 
 export type SectionDocument = "wording" | "manual";
 
+export type StartEvaluationRequestEvalSet = "evaluation" | "held_out";
+
 export type StepKind =
   "tool_call" | "tool_result" | "message" | "read" | "error";
 
@@ -75,6 +99,7 @@ export interface ClaimDetail {
   customer_name: string;
   decision: Decision | null;
   documents: Document[];
+  evaluation_id: number | null;
   incident_date: string;
   incident_location: string;
   items: Item[];
@@ -107,6 +132,14 @@ export interface CreateDispatchRequest {
   concurrency: number;
   model: string;
   reasoning_effort: string;
+}
+
+export interface CreateEvaluationRequest {
+  concurrency: number;
+  eval_set: CreateEvaluationRequestEvalSet;
+  model: string;
+  reasoning_effort: string;
+  tiny: boolean;
 }
 
 export interface Decision {
@@ -172,6 +205,51 @@ export interface EndRunRequest {
   state: EndRunRequestState;
 }
 
+export interface Evaluation {
+  claim_count: number;
+  concurrency: number;
+  ended_at: string | null;
+  eval_set: EvaluationEvalSet;
+  measures: Measures;
+  model: string;
+  reasoning_effort: string;
+  run_id: number;
+  started_at: string;
+  state: EvaluationState;
+  tiny: boolean;
+}
+
+export interface EvaluationClaim {
+  agent_decision: EvaluationClaimAgentDecision | null;
+  agent_payout: number | null;
+  claim_id: string;
+  cost: number;
+  decision_matches: boolean;
+  handler_decision: EvaluationClaimHandlerDecision;
+  handler_payout: number;
+  mistake_cost: number;
+  reason: string | null;
+  right: boolean;
+  seconds: number;
+  source_id: string;
+  state: EvaluationClaimState;
+}
+
+export interface EvaluationDetail {
+  claim_count: number;
+  concurrency: number;
+  ended_at: string | null;
+  eval_set: EvaluationDetailEvalSet;
+  measures: Measures;
+  model: string;
+  reasoning_effort: string;
+  results: EvaluationClaim[];
+  run_id: number;
+  started_at: string;
+  state: EvaluationDetailState;
+  tiny: boolean;
+}
+
 export interface HTTPValidationError {
   detail?: ValidationError[];
 }
@@ -200,6 +278,16 @@ export interface Line {
   kind: LineKind;
   nights: number;
   quantity: number;
+}
+
+export interface Measures {
+  accuracy: number;
+  cost_of_mistakes: number;
+  cost_per_claim: number;
+  decision_accuracy: number;
+  run_seconds: number | null;
+  seconds_per_claim: number;
+  straight_through: number;
 }
 
 export interface ModelCallRequest {
@@ -296,8 +384,15 @@ export interface StartDispatchRequest {
   concurrency: number;
 }
 
+export interface StartEvaluationRequest {
+  concurrency: number;
+  eval_set: StartEvaluationRequestEvalSet;
+  tiny: boolean;
+}
+
 export interface StartedClaim {
   claim_id: string;
+  evaluation: boolean;
   resumed: boolean;
   thread_id: string;
 }

@@ -53,6 +53,9 @@ class Agents:
     def claim(self, runner: agent_service.ClaimAgent) -> None:
         app.dependency_overrides[agent_service.claim_agent] = lambda: runner
 
+    def evaluation(self, starter: agent_service.EvaluationStarter) -> None:
+        app.dependency_overrides[agent_service.evaluation_starter] = lambda: starter
+
     def dispatch(self, starter: agent_service.DispatchStarter) -> None:
         app.dependency_overrides[agent_service.dispatch_starter] = lambda: starter
 

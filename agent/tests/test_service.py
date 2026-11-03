@@ -255,3 +255,36 @@ def test_the_service_stops_if_the_backend_never_comes_up(
     monkeypatch.setattr(service.time, "sleep", lambda seconds: None)
     with pytest.raises(AgentError, match="backend could not be reached"):
         service.stop_stale_runs()
+
+
+def test_an_evaluation_starts_with_its_set_and_is_recorded(
+    client: TestClient, agent_service: TestClient, workers: Workers
+):
+    body = {"concurrency": 5, "eval_set": "held_out", "tiny": True}
+    response = agent_service.post("/evaluations", json=body)
+    assert response.status_code == 202
+    detail = client.get(f"/api/evaluations/{response.json()['run_id']}").json()
+    assert (detail["eval_set"], detail["tiny"], detail["concurrency"]) == (
+        "held_out",
+        True,
+        5,
+    )
+    assert detail["claim_count"] == 5
+    assert agent_service.post("/dispatches", json={"concurrency": 3}).status_code == 409
+    workers.release.set()
+    for _ in range(100):
+        if (
+            client.get(f"/api/evaluations/{detail['run_id']}").json()["state"]
+            != "running"
+        ):
+            break
+        time.sleep(0.05)
+    ended = client.get(f"/api/evaluations/{detail['run_id']}").json()
+    assert ended["state"] == "finished"
+    assert len(workers.worked) == 5
+    assert all(copy.startswith("EV1-CLM-11") for copy, _ in workers.worked)
+
+
+def test_an_evaluation_set_that_does_not_exist_is_refused(agent_service: TestClient):
+    body = {"concurrency": 5, "eval_set": "queue", "tiny": True}
+    assert agent_service.post("/evaluations", json=body).status_code == 422

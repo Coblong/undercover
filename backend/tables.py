@@ -15,22 +15,43 @@ from sqlalchemy import (
 
 metadata = MetaData()
 
+
+def claim_columns() -> list[Column]:
+    """The columns that describe a claim, which the queue and the held-out set share."""
+    return [
+        Column("claim_id", Text, primary_key=True),
+        Column("policy_id", Text, nullable=False),
+        Column("customer_id", Text, nullable=False),
+        Column("claim_type", Text, nullable=False),
+        Column("submitted_on", Text, nullable=False),
+        Column("incident_date", Text, nullable=False),
+        Column("incident_location", Text, nullable=False),
+        Column("summary", Text, nullable=False),
+        Column("story", Text, nullable=False),
+        Column("items", JSON, nullable=False),
+        Column("documents", JSON, nullable=False),
+        Column("amount_claimed", Float, nullable=False),
+    ]
+
+
+CLAIM_FIELDS = [column.name for column in claim_columns()]
+
 claims = Table(
     "claims",
     metadata,
-    Column("claim_id", Text, primary_key=True),
-    Column("policy_id", Text, nullable=False),
-    Column("customer_id", Text, nullable=False),
-    Column("claim_type", Text, nullable=False),
-    Column("submitted_on", Text, nullable=False),
-    Column("incident_date", Text, nullable=False),
-    Column("incident_location", Text, nullable=False),
-    Column("summary", Text, nullable=False),
-    Column("story", Text, nullable=False),
-    Column("items", JSON, nullable=False),
-    Column("documents", JSON, nullable=False),
-    Column("amount_claimed", Float, nullable=False),
+    *claim_columns(),
     Column("state", Text, nullable=False),
+    Column("evaluation_id", Integer, ForeignKey("runs.id")),
+)
+held_out_claims = Table("held_out_claims", metadata, *claim_columns())
+answer_key = Table(
+    "answer_key",
+    metadata,
+    Column("eval_set", Text, primary_key=True),
+    Column("claim_id", Text, primary_key=True),
+    Column("decision", Text, nullable=False),
+    Column("payout", Float, nullable=False),
+    Column("tiny", Boolean, nullable=False),
 )
 policies = Table(
     "policies",
@@ -88,6 +109,8 @@ runs = Table(
     Column("model", Text, nullable=False),
     Column("reasoning_effort", Text, nullable=False),
     Column("state", Text, nullable=False),
+    Column("eval_set", Text),
+    Column("tiny", Boolean),
     Column("started_at", Text, nullable=False),
     Column("ended_at", Text),
     sqlite_autoincrement=True,
@@ -98,6 +121,7 @@ run_claims = Table(
     Column("run_id", Integer, ForeignKey("runs.id"), primary_key=True),
     Column("claim_id", Text, ForeignKey("claims.claim_id"), primary_key=True),
     Column("position", Integer, nullable=False),
+    Column("source_id", Text),
     Column("started_at", Text),
 )
 attempts = Table(
@@ -153,6 +177,7 @@ Index("steps_by_claim", steps.c.claim_id)
 Index("attempts_by_claim", attempts.c.claim_id)
 Index("attempts_by_run", attempts.c.run_id)
 Index("run_claims_by_claim", run_claims.c.claim_id)
+Index("claims_by_evaluation", claims.c.evaluation_id)
 Index(
     "one_open_attempt",
     attempts.c.claim_id,
