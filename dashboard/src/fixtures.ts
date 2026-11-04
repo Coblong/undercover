@@ -4,6 +4,8 @@ import type {
   ClaimHistory,
   ClaimSummary,
   Dispatch,
+  Evaluation,
+  EvaluationDetail,
   Policy,
 } from "./types";
 
@@ -228,4 +230,70 @@ export const finishedDispatch: Dispatch = {
     left_for_handler: ["CLM-1005"],
     in_progress: ["CLM-1006"],
   },
+};
+
+export const finishedEvaluationRow: Evaluation = {
+  run_id: 3,
+  eval_set: "held_out",
+  tiny: true,
+  concurrency: 5,
+  model: "openai/gpt-6-luna",
+  reasoning_effort: "low",
+  state: "finished",
+  started_at: "2026-11-03T10:00:00+00:00",
+  ended_at: "2026-11-03T10:01:30+00:00",
+  claim_count: 2,
+  measures: {
+    decision_accuracy: 0.5,
+    accuracy: 0.5,
+    cost_of_mistakes: 1250,
+    straight_through: 1,
+    cost_per_claim: 0.0123,
+    seconds_per_claim: 31.5,
+    run_seconds: 90,
+  },
+};
+
+export const finishedEvaluation: EvaluationDetail = {
+  ...finishedEvaluationRow,
+  results: [
+    {
+      claim_id: "EV3-CLM-1104",
+      source_id: "CLM-1104",
+      state: "decided",
+      handler_decision: "approve",
+      handler_payout: 250,
+      agent_decision: "approve",
+      agent_payout: 250,
+      reason: "Covered.",
+      decision_matches: true,
+      right: true,
+      mistake_cost: 0,
+      cost: 0.01,
+      seconds: 30,
+    },
+    {
+      claim_id: "EV3-CLM-1114",
+      source_id: "CLM-1114",
+      state: "decided",
+      handler_decision: "decline",
+      handler_payout: 0,
+      agent_decision: "approve",
+      agent_payout: 1250,
+      reason: "Covered.",
+      decision_matches: false,
+      right: false,
+      mistake_cost: 1250,
+      cost: 0.0146,
+      seconds: 33,
+    },
+  ],
+};
+
+export const evaluationCopy: ClaimDetail = {
+  ...waitingForSignOff,
+  claim_id: "EV3-CLM-1114",
+  state: "decided",
+  needs_sign_off: true,
+  evaluation_id: 3,
 };

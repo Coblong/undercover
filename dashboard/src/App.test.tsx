@@ -2,7 +2,15 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { claim, claimRoutes, stubApi, summaries } from "./fixtures";
+import {
+  claim,
+  claimRoutes,
+  evaluationCopy,
+  finishedEvaluation,
+  finishedEvaluationRow,
+  stubApi,
+  summaries,
+} from "./fixtures";
 
 afterEach(() => {
   cleanup();
@@ -72,4 +80,25 @@ it("keeps the queue up to date", async () => {
     expect(decided()).toBe("3Decided");
   });
   vi.useRealTimers();
+});
+
+it("opens an evaluation's claim from the scoreboard in the claims view", async () => {
+  stubApi({
+    "/api/claims": summaries,
+    "/api/dispatches/latest": null,
+    "/api/evaluations": [finishedEvaluationRow],
+    "/api/evaluations/3": finishedEvaluation,
+    "/api/claims/EV3-CLM-1114": evaluationCopy,
+  });
+  render(<App />);
+  await userEvent.click(screen.getByRole("button", { name: "Scoreboard" }));
+  await userEvent.click(await screen.findByRole("button", { name: "3" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "EV3-CLM-1114" }),
+  );
+  expect(
+    await screen.findByRole("article", { name: "Claim EV3-CLM-1114" }),
+  ).toBeDefined();
+  expect(screen.getByRole("region", { name: "Queue" })).toBeDefined();
+  expect(screen.queryByRole("region", { name: "Scoreboard" })).toBeNull();
 });

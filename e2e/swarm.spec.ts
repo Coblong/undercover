@@ -6,6 +6,8 @@ import { type APIRequestContext, expect, test } from "@playwright/test";
 interface Started {
   kind: string;
   concurrency: number;
+  eval_set?: string;
+  tiny?: boolean;
 }
 
 async function started(request: APIRequestContext): Promise<Started[]> {
@@ -17,6 +19,14 @@ async function endRun(request: APIRequestContext, state = "finished") {
   const latest = await request.get("/api/dispatches/latest");
   const { run_id: runId } = (await latest.json()) as { run_id: number };
   await request.post(`/api/runs/${String(runId)}/end`, { data: { state } });
+}
+
+async function endLatestEvaluation(request: APIRequestContext) {
+  const listed = await request.get("/api/evaluations");
+  const [latest] = (await listed.json()) as { run_id: number }[];
+  await request.post(`/api/runs/${String(latest.run_id)}/end`, {
+    data: { state: "finished" },
+  });
 }
 
 test("starting a dispatch reaches the agent's service with the number chosen", async ({
@@ -119,4 +129,119 @@ test("a dispatch played out through the API shows its claims, cost and summary",
   await expect(dispatch.getByRole("row", { name: /CLM-1024/ })).toContainText(
     "In progress",
   );
+});
+
+test("starting an evaluation reaches the agent's service with the set and the number", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "Scoreboard" }).click();
+  const board = page.getByRole("region", { name: "Scoreboard" });
+  await board.getByLabel("Set").selectOption("held_out");
+  await board.getByLabel("Just the 5 tiny claims").check();
+  await board.getByLabel("Claim agents at once").fill("5");
+  await board.getByRole("button", { name: "Start an evaluation" }).click();
+  const table = board.getByRole("table", { name: "Evaluations" });
+  await expect(table.getByRole("row").nth(1)).toContainText("Running");
+  await expect(table.getByRole("row").nth(1)).toContainText("Held-out set5");
+  const calls = await started(request);
+  expect(calls.at(-1)).toEqual({
+    kind: "evaluation",
+    concurrency: 5,
+    eval_set: "held_out",
+    tiny: true,
+  });
+  await expect(
+    board.getByRole("button", { name: "Start an evaluation" }),
+  ).toBeDisabled();
+  await endLatestEvaluation(request);
+});
+
+test("an evaluation played out through the API is scored on the scoreboard and leaves the queue as it was", async ({
+  page,
+  request,
+}) => {
+  const counts = () => page.locator("ul.counts li").allTextContents();
+  await page.goto("/");
+  await expect(page.locator("ul.counts li")).toHaveCount(5);
+  const before = await counts();
+
+  const created = await request.post("/api/runs/evaluation", {
+    data: {
+      concurrency: 5,
+      eval_set: "held_out",
+      tiny: true,
+      model: "openai/gpt-6-luna",
+      reasoning_effort: "low",
+    },
+  });
+  const { run_id: runId } = (await created.json()) as { run_id: number };
+  const answers: [string, string, number][] = [
+    ["CLM-1104", "approve", 250],
+    ["CLM-1106", "approve", 250],
+    ["CLM-1110", "refer", 0],
+    ["CLM-1112", "approve", 680],
+    ["CLM-1114", "approve", 1250],
+  ];
+  for (const [source, kind, payout] of answers) {
+    const copy = `EV${String(runId)}-${source}`;
+    await request.post(`/api/runs/${String(runId)}/claims/${copy}/start`);
+    await request.post(`/api/claims/${copy}/decision`, {
+      data: {
+        decision: kind,
+        payout,
+        explanation: "Stub.",
+        policy_section: "3. Trip Delay",
+      },
+    });
+    await request.post(`/api/claims/${copy}/model-calls`, {
+      data: { run_id: runId, input_tokens: 9, output_tokens: 1, cost: 0.01 },
+    });
+    await request.post(`/api/claims/${copy}/work-times`, {
+      data: { run_id: runId, seconds: 10 },
+    });
+    await request.post(`/api/claims/${copy}/attempt/end`, {
+      data: { error: null },
+    });
+  }
+  await request.post(`/api/runs/${String(runId)}/end`, {
+    data: { state: "finished" },
+  });
+
+  await page.reload();
+  await expect(page.locator("ul.counts li")).toHaveCount(5);
+  expect(await counts()).toEqual(before);
+  await page.getByRole("button", { name: "Scoreboard" }).click();
+  const newest = page
+    .getByRole("table", { name: "Evaluations" })
+    .getByRole("row")
+    .nth(1);
+  await expect(newest).toContainText("Finished");
+  // Four of five decisions match; one wrongful approval of $1,250.00.
+  await expect(newest.getByRole("cell").nth(7)).toHaveText("80%");
+  await expect(newest.getByRole("cell").nth(8)).toHaveText("80%");
+  await expect(newest.getByRole("cell").nth(9)).toHaveText("$1,250.00");
+  await expect(newest.getByRole("cell").nth(10)).toHaveText("80%");
+  await expect(newest.getByRole("cell").nth(11)).toHaveText("$0.0100");
+  await expect(newest.getByRole("cell").nth(12)).toHaveText("10.0 s");
+
+  await newest.getByRole("button", { name: String(runId) }).click();
+  const claims = page.getByRole("table", { name: "Evaluation claims" });
+  const miss = claims.getByRole("row", { name: /CLM-1114/ });
+  await expect(miss).toContainText("Declined");
+  await expect(miss).toContainText("Approved $1,250.00");
+  await expect(miss).toContainText("Miss");
+  await expect(claims.getByRole("row", { name: /CLM-1104/ })).toContainText(
+    "Match",
+  );
+  await expect(claims.getByText("Miss")).toHaveCount(1);
+
+  await miss.getByRole("button", { name: /^EV/ }).click();
+  const copy = page.getByRole("article", { name: /^Claim EV/ });
+  await expect(copy).toContainText("Evaluation copy");
+  await expect(copy).toContainText("counts as finished");
+  await expect(copy.getByRole("button", { name: /Sign off/ })).toHaveCount(0);
+  await expect(copy.getByRole("button", { name: "Run agent" })).toHaveCount(0);
+  expect(await counts()).toEqual(before);
 });

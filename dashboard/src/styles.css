@@ -338,6 +338,10 @@ summary {
   max-width: 60rem;
 }
 
+.single.wide {
+  max-width: none;
+}
+
 .instructions pre {
   white-space: pre-wrap;
   font: inherit;
@@ -495,4 +499,50 @@ input[type="number"] {
 
 .summary {
   white-space: pre-wrap;
+}
+
+select {
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font: inherit;
+}
+
+.run-form label.inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cerulean);
+  font-family: inherit;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+button.link.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 0.9em;
+}
+
+@media (prefers-color-scheme: dark) {
+  button.link {
+    color: #5fc4e6;
+  }
+}
+
+tr.miss {
+  background: color-mix(in srgb, var(--raspberry) 14%, transparent) !important;
+}
+
+tr[aria-selected="true"] {
+  outline: 2px solid var(--cerulean);
+  outline-offset: -2px;
 }

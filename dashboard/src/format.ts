@@ -115,3 +115,13 @@ const clock = new Intl.DateTimeFormat("en-US", {
 export function timeOfDay(iso: string): string {
   return clock.format(new Date(iso));
 }
+
+/** A share as a whole percentage: 0.8 is "80%". */
+export function percent(share: number): string {
+  return `${String(Math.round(share * 100))}%`;
+}
+
+export const SET_LABEL = {
+  evaluation: "Evaluation set",
+  held_out: "Held-out set",
+} as const;

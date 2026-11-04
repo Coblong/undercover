@@ -27,9 +27,10 @@ function DecisionPanel(
     decision: Decision;
     payment: Payment | null;
     signOff: SignOff | null;
+    held: boolean;
   }>,
 ) {
-  const { decision, payment, signOff } = props;
+  const { decision, payment, signOff, held } = props;
   return (
     <section className="inset" aria-label="Decision">
       <h3>Decision</h3>
@@ -44,6 +45,12 @@ function DecisionPanel(
       </p>
       <p>{decision.explanation}</p>
       <p className="muted">Policy section: {decision.policy_section}</p>
+      {held && (
+        <p className="muted">
+          A payout over the limit is not paid on an evaluation copy. It counts
+          as finished.
+        </p>
+      )}
       {signOff && (
         <p className="muted">
           Signed off by {signOff.handler_name} on {date(signOff.signed_off_at)}.
@@ -185,7 +192,14 @@ export function ClaimView({
         <dt>Claimed</dt>
         <dd className="mono">{money(claim.amount_claimed)}</dd>
       </dl>
-      {claim.state === "waiting" && (
+      {claim.evaluation_id !== null && (
+        <p className="inset">
+          <Chip tone="cerulean" label="Evaluation copy" /> Made for evaluation{" "}
+          <span className="mono">{claim.evaluation_id}</span>. The evaluation
+          works it, and nobody signs it off or pays it.
+        </p>
+      )}
+      {claim.state === "waiting" && claim.evaluation_id === null && (
         <RunAgent claimId={claim.claim_id} onDone={changed} />
       )}
       {claim.state === "left_for_handler" && (
@@ -200,15 +214,18 @@ export function ClaimView({
           decision={claim.decision}
           payment={claim.payment}
           signOff={claim.sign_off}
+          held={claim.evaluation_id !== null && claim.needs_sign_off}
         />
       )}
-      {claim.state === "waiting_for_sign_off" && claim.decision && (
-        <SignOffForm
-          claimId={claim.claim_id}
-          payout={claim.decision.payout}
-          onDone={changed}
-        />
-      )}
+      {claim.state === "waiting_for_sign_off" &&
+        claim.evaluation_id === null &&
+        claim.decision && (
+          <SignOffForm
+            claimId={claim.claim_id}
+            payout={claim.decision.payout}
+            onDone={changed}
+          />
+        )}
       <h3>Story</h3>
       <p>{claim.story}</p>
       <h3>Items claimed</h3>

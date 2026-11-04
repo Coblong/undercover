@@ -4,9 +4,16 @@ import { ClaimView } from "./ClaimView";
 import { DispatchPanel } from "./DispatchPanel";
 import { Instructions } from "./Instructions";
 import { Queue } from "./Queue";
+import { Scoreboard } from "./Scoreboard";
 import type { ClaimSummary } from "./types";
 
-type View = "claims" | "instructions";
+type View = "claims" | "scoreboard" | "instructions";
+
+const VIEWS: Record<View, string> = {
+  claims: "Claims",
+  scoreboard: "Scoreboard",
+  instructions: "Instructions",
+};
 
 export function App() {
   const {
@@ -23,7 +30,7 @@ export function App() {
         <h1>UnderCover</h1>
         <p className="tagline">Claims, worked straight through</p>
         <nav aria-label="Views">
-          {(["claims", "instructions"] as const).map((name) => (
+          {(Object.keys(VIEWS) as View[]).map((name) => (
             <button
               key={name}
               type="button"
@@ -32,16 +39,27 @@ export function App() {
                 setView(name);
               }}
             >
-              {name === "claims" ? "Claims" : "Instructions"}
+              {VIEWS[name]}
             </button>
           ))}
         </nav>
       </header>
-      {view === "instructions" ? (
+      {view === "instructions" && (
         <main className="single">
           <Instructions />
         </main>
-      ) : (
+      )}
+      {view === "scoreboard" && (
+        <main className="single wide">
+          <Scoreboard
+            onOpenClaim={(claimId) => {
+              setSelected(claimId);
+              setView("claims");
+            }}
+          />
+        </main>
+      )}
+      {view === "claims" && (
         <main className="layout">
           <DispatchPanel />
           {claims ? (

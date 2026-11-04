@@ -211,11 +211,11 @@ Builds the page that starts and shows evaluations. It comes last of the builds b
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes with 80% coverage and tests for: the start form and its limits, a refused start, the list with every measure, the opened evaluation with a miss marked, the link opening the copy, the copy's page with no sign-off form and no "Run agent", polling that stops when the run ends, and loading and error states.
-- [ ] `npm run e2e` passes with tests that: starting an evaluation of the held-out set with N=5 and `tiny` reaches the stand-in with 5, `held_out` and `tiny`; and an evaluation the test plays out through the API, as `run.spec.ts` does with a run today, shows on the scoreboard with measures that match ones the test worked out, with a miss marked and its claim's page opened from the link.
-- [ ] The queue page's counts are 25 waiting before and after that evaluation in the same test.
-- [ ] In the browser (Playwright MCP) against the end-to-end servers' data, the Scoreboard shows in light and dark mode with the brand's fonts and colors, and the page has no horizontal scroll at 1280 px and stays usable at 800 px.
-- [ ] No `any` in `dashboard/`, and `tsc` passes in strict mode. `npm run check` passes. The phase is committed.
+- [x] `npm run check:ts` passes with 80% coverage and tests for: the start form and its limits, a refused start, the list with every measure, the opened evaluation with a miss marked, the link opening the copy, the copy's page with no sign-off form and no "Run agent", polling that stops when the run ends, and loading and error states.
+- [x] `npm run e2e` passes with tests that: starting an evaluation of the held-out set with N=5 and `tiny` reaches the stand-in with 5, `held_out` and `tiny`; and an evaluation the test plays out through the API, as `run.spec.ts` does with a run today, shows on the scoreboard with measures that match ones the test worked out, with a miss marked and its claim's page opened from the link.
+- [x] The queue page's counts are 25 waiting before and after that evaluation in the same test.
+- [x] In the browser (the Playwright library, since the Playwright MCP server was not available in the session) against a temporary backend and dashboard holding a dispatch and an evaluation played out through the API, the Scoreboard shows in light and dark mode with the brand's fonts and colors, and the page has no horizontal scroll at 1280 px and stays usable at 800 px.
+- [x] No `any` in `dashboard/`, and `tsc` passes in strict mode. `npm run check` passes. The phase is committed.
 
 ## Phase 6: Live check and documents
 

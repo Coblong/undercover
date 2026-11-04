@@ -6,6 +6,7 @@ import {
   claim,
   claimRoutes,
   decidedClaim,
+  evaluationCopy,
   handlers,
   stubApi,
   waitingForSignOff,
@@ -217,4 +218,35 @@ it("shows items and documents that share a name without a key warning", async ()
   expect(screen.getAllByText(/Hotel receipt/)).toHaveLength(2);
   expect(warn).not.toHaveBeenCalled();
   warn.mockRestore();
+});
+
+it("labels an evaluation copy and offers no sign-off and no way to run it", async () => {
+  stubApi({ "/api/claims/EV3-CLM-1114": evaluationCopy });
+  render(<ClaimView claimId="EV3-CLM-1114" onChange={vi.fn()} />);
+  expect(await screen.findByText("Evaluation copy")).toBeDefined();
+  const decision = await screen.findByRole("region", { name: "Decision" });
+  expect(decision.textContent).toContain("counts as finished");
+  expect(screen.queryByRole("button", { name: /Sign off/ })).toBeNull();
+  expect(screen.queryByLabelText("Handler")).toBeNull();
+});
+
+it("offers a waiting copy no way to run it, and shows a queue claim as before", async () => {
+  stubApi({
+    "/api/claims/EV3-CLM-1114": {
+      ...evaluationCopy,
+      state: "waiting",
+      decision: null,
+      needs_sign_off: false,
+    },
+  });
+  render(<ClaimView claimId="EV3-CLM-1114" onChange={vi.fn()} />);
+  expect(await screen.findByText("Evaluation copy")).toBeDefined();
+  expect(screen.queryByRole("button", { name: "Run agent" })).toBeNull();
+  cleanup();
+  stubApi({ "/api/claims/CLM-1001": claim, ...claimRoutes });
+  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  expect(
+    await screen.findByRole("button", { name: "Run agent" }),
+  ).toBeDefined();
+  expect(screen.queryByText("Evaluation copy")).toBeNull();
 });
