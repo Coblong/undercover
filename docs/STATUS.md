@@ -1,6 +1,6 @@
 # Status
 
-The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent. The harness build, following `docs/PLAN_HARNESS.md`, has the agent run the queue from a to-do list, hand each claim to a fresh claim agent, look up the wording and the claims manual by section, and recover from failures. The durable build, following `docs/PLAN_DURABLE.md`, adds the payout rules, tracing in Langfuse, the records on Supabase, a claim agent that waits for a sign-off and carries on, and work that survives a restart. The swarm build, following `docs/PLAN_SWARM.md` (in progress), replaces the queue agent with a dispatcher that works many claims at once, and adds the cost and time of every claim, evaluations and a scoreboard.
+The claims pilot is built, following `docs/PLAN.md`: a backend, a dashboard for the handlers and the UnderCover Agent. The harness build, following `docs/PLAN_HARNESS.md`, has the agent run the queue from a to-do list, hand each claim to a fresh claim agent, look up the wording and the claims manual by section, and recover from failures. The durable build, following `docs/PLAN_DURABLE.md`, adds the payout rules, tracing in Langfuse, the records on Supabase, a claim agent that waits for a sign-off and carries on, and work that survives a restart. The swarm build, following `docs/PLAN_SWARM.md`, replaces the queue agent with a dispatcher that works many claims at once, and adds the cost and time of every claim, evaluations and a scoreboard.
 
 ## Run it
 
@@ -58,15 +58,37 @@ On 3 November 2026, on Supabase with the default model (`deepseek/deepseek-v4.1-
 - `pg_stat_activity` for the postgres user, through the Supabase MCP server, showed 7 to 8 connections each time it was sampled while the runs worked (it was not watched continuously), counting the three Supabase and the MCP server hold themselves, against a limit of 12. After 60 requests at once the backend held 3.
 - Results were not compared with `data/evals/`.
 
+## Checked live (swarm build)
+
+On 4 November 2026, on Supabase with the default model (`openai/gpt-6-luna`, low reasoning), after one `npm run seed` and with `npm run dev`:
+
+- **N=3, stopped.** Dispatch 1 (N=3) started 09:01:02. After about two minutes `kill -9` on both processes on port 8002 stopped `npm run dev`. CLM-1001 was decided and paid and CLM-1008 and CLM-1011 were held for sign-off. CLM-1010, CLM-1015 and CLM-1018 were in progress, each with one open attempt and 11 to 12 checkpoints, and the run was still `running`. Starting `npm run dev` again marked it `stopped`.
+- **N=25.** Dispatch 2 (N=25) worked the 22 claims left (the other three were done or held). It carried on CLM-1010, CLM-1015 and CLM-1018 as the same attempts, each with one attempt and its original thread, and the 19 claims worked from the start all began within 3 seconds, so every claim ran at once. The run took 45.0 seconds against 684.2 seconds for its claims' times added up. It cost $0.0196, with 16 approvals (one held for sign-off), 4 declines and 2 referrals. A sign-off of CLM-1008 in a real browser while it ran paid 3.4 seconds after the click. No claim failed and no step recorded an error.
+- **Connections.** `pg_stat_activity` for the postgres user, polled every second for the whole check (and once through the Supabase MCP server), never showed more than 10, counting the connections Supabase and the poller hold, against a limit of 12.
+- **Evaluation of the evaluation set, N=25** (evaluation 4): `decision_accuracy` 80%, `accuracy` 80%, cost of mistakes $2,919.00, straight through 92%, model cost per claim $0.0011, time per claim 43.4 seconds, run time 55 seconds. It missed CLM-1018, CLM-1025 and CLM-1019 (approved $330.00, $71.00 and $98.00 where the handlers referred), CLM-1012 (approved $920.00 where the handlers declined) and CLM-1023 (declined where the handlers referred). The queue's counts (23 decided, 2 waiting for sign-off) were the same before and after.
+- **Evaluation of the held-out set's five `tiny` claims, N=5** (evaluation 5): all five matched the handlers, so `decision_accuracy` and `accuracy` 100%, no cost of mistakes, straight through 80%, $0.0011 per claim, 19.0 seconds per claim, 27 seconds in all. The queue's counts were unchanged.
+- **Langfuse.** The 25 claims of evaluation 4 are found together by the tag `run-4`: 25 traces in 25 sessions.
+- **Not as planned.** Evaluation 3 (the first try of the evaluation set at N=25) stalled and is still on the Scoreboard: 18 copies were left in progress and 7 failed on backend timeouts, so its 24% means nothing. Dispatch 2's and evaluation 3's traces in Langfuse carry no session or tag, because the claim graph then ran inside the dispatcher's run. Dispatch 1's 24 model calls were recorded with a cost of $0.00, since OpenRouter's `usage.cost` is 0 on a key of our own.
+
+Three problems the live runs found are fixed, each with a test:
+
+- **The backend stalled at N=25.** A route took its database connection in a dependency, used it in another thread and returned it in a third. With more requests waiting than the pool holds, the waiters filled the 40 request threads and the requests holding a connection could never get a thread to return it, so every request waited out the 60-second timeout. A route now takes and returns its connection in its own thread (`with_db`), and `backend/tests/test_pool.py` reproduces the stall with one connection and three threads.
+- **Cost was $0.** On a key of our own OpenRouter reports the model's price in `cost_details.upstream_inference_cost` and only its fee in `usage.cost`, so both are added when `is_byok` is true.
+- **A claim lost its Langfuse session and tag** when it ran inside the dispatcher's worker. `work_claim` now runs each claim in a context of its own.
+
+Where the time goes at N=25: a claim took about 43 seconds against about 22 at N=3. The model's calls took the same time (2.0 seconds at N=3, 1.6 to 2.1 at N=25). The backend calls grew: a tool call's mean from 0.07 to 0.22 seconds, the tools node's from 1.0 to 2.6 seconds and the check node's from 0.15 to 0.43 seconds. That is 25 claim agents sharing the backend's 4 connections to Supabase, each call a few round trips. Cutting the backend's queries for each call, or the steps it records, would cut it; more connections are not allowed.
+
 ## Open items
+
+- The time of a stretch that was killed with its process is not recorded, and neither is its cost, so a claim carried on by the next dispatch shows only the stretch that dispatch worked.
+- At N=25 each claim takes about twice as long as at N=3, because the backend's calls wait for its 4 connections (see above).
+- A dispatch ends `finished` even when claims were left in progress after their retries ran out; its summary lists them, and the next dispatch carries them on.
 
 - Payouts may vary between runs of the same claim, because the model chooses the lines it sends to `calculate_payout`. Scoring the agent against `data/evals/` is for a later build.
 - The claim agent reads many sections for each claim (10 to 14 in the live check), more than the instructions strictly need. Narrowing that would cut cost.
 - A claim left for a handler stays there: handlers have no way yet to return it to the queue or decide it from the dashboard.
 - A handler can only sign off a held payout. Rejecting it, and the note back to the agent, are for a later build.
-- A stopped run shows as Running on the dashboard until the next run takes it over from the command line.
 - Several tool failures are returned to the model as text rather than retried (the graph's retry policy covers the model; `call` retries a connection that fails).
 - The `undercover` tables on Supabase have row level security off. The schema is not one the Supabase API serves, but turn it on with policies before anything else reads them.
 - The Instructions view shows the Markdown marks as they are written.
-- Claims are worked one at a time. Several at once is not built.
 - Sign-in, real payments and messages to customers are not built, as the spec says.

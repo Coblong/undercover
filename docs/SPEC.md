@@ -16,11 +16,11 @@ We want an AI agent, the UnderCover Agent, to work the queue the way a handler d
 - work out the payout when it approves
 - explain the decision in two or three sentences, along with the relevant section of the policy
 
-The agent also runs the queue. One run works every waiting claim, choosing the order itself, and ends with a short summary for the handlers. A run can be capped at a number of claims, with the rest left waiting, and the agent can still be run on one named claim. It plans its work as a to-do list and hands each claim to a fresh helper that works that claim alone and reports back in a line.
+Our claims arrive in batches, so a dispatch works the queue with many claim agents at once. A dispatch works every claim left in progress and every waiting claim, oldest submitted first, with up to N claim agents working at the same time. Code chooses the claims and keeps track of the run, with no model, and each claim is worked by the claim agent alone. A handler starts a dispatch on the dashboard and chooses N, from 1 to 25. Only one dispatch or evaluation runs at a time, and the run's summary comes from our records, not from a model. The agent can still be run on one named claim.
 
 When the agent approves a payout over $1,000 it stops and waits for a handler, keeping everything it has worked out. As soon as a handler signs off on the dashboard, the agent picks the claim up from where it stopped and pays it. Between the sign-off and the payment the claim shows as in progress, and the payment records who signed off and when. If the agent is not running at that moment, it picks the claim up the next time it runs. A handler can only sign off for now.
 
-If the agent is stopped partway through a claim, by a crash, a restart or Ctrl-C, it carries on with that claim from where it got to the next time it runs, and that does not count as a new attempt. A queue run that was stopped is finished by the next run. A claim that fails with an error still goes back in the queue and starts afresh.
+If the agent is stopped partway through a claim, by a crash, a restart or Ctrl-C, it carries on with that claim from where it got to the next time it runs, and that does not count as a new attempt. A dispatch that was stopped is finished by the next one. A claim that hits a rate limit or a timeout waits and carries on from where it got to, as the same attempt, and one that is still hitting them stays in progress for the next dispatch. A claim that fails with any other error goes back in the queue and the same dispatch tries it once more.
 
 Our goal is to handle claims straight through, as accurately as our handlers do.
 
@@ -29,8 +29,10 @@ Our goal is to handle claims straight through, as accurately as our handlers do.
 - The queue, with where each claim stands: waiting, in progress, waiting for sign-off or decided.
 - Each claim in full, with the agent's decision and its reasons.
 - What the agent is doing on a claim while it works, step by step, and the sections of the wording and the manual it read.
-- The to-do list of the current run, with each item to do, in progress, done or left for a handler, and the run's summary when it ends.
-- The agent's instructions, for running the queue and for working a claim, read only.
+- The current dispatch, with each of its claims and where it stands, its model cost and time, and a summary when it ends: how many claims were approved, declined and referred, each payout waiting for a sign-off, and each claim left for a handler or still in progress.
+- What each claim cost in tokens and model cost, and the time the agent spent working on it, which leaves out any wait for a handler's sign-off.
+- How well the agent is doing: on the Scoreboard, an evaluation works copies of our labelled claims, and shows how often the agent agrees with our handlers, what its mistakes cost, how many claims it handles straight through, and its cost and time per claim.
+- The agent's instructions for working a claim, read only.
 
 ## Rules
 

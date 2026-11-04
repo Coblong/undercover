@@ -156,3 +156,31 @@ def test_negative_or_unreasonable_numbers_are_refused(client: TestClient):
     assert client.post("/api/claims/CLM-1001/model-calls", json=body).status_code == 422
     time = {"run_id": None, "seconds": -1}
     assert client.post("/api/claims/CLM-1001/work-times", json=time).status_code == 422
+
+
+def reply_with(usage: dict[str, Any]) -> AIMessage:
+    message = AIMessage(content="")
+    message.response_metadata = {"token_usage": usage}
+    return message
+
+
+def test_a_reply_costs_what_openrouter_reports():
+    assert main.reply_cost(reply_with({"cost": 0.0042})) == 0.0042
+    assert main.reply_cost(reply_with({"cost": 0.0042, "is_byok": False})) == 0.0042
+    assert main.reply_cost(AIMessage(content="")) == 0.0
+
+
+def test_a_reply_on_our_own_key_adds_what_the_provider_charged():
+    usage = {
+        "cost": 0.0001,
+        "is_byok": True,
+        "cost_details": {"upstream_inference_cost": 0.0037},
+    }
+    assert main.reply_cost(reply_with(usage)) == pytest.approx(0.0038)
+    free_fee = {
+        "cost": 0,
+        "is_byok": True,
+        "cost_details": {"upstream_inference_cost": 3.7e-06},
+    }
+    assert main.reply_cost(reply_with(free_fee)) == pytest.approx(3.7e-06)
+    assert main.reply_cost(reply_with({"cost": 0, "is_byok": True})) == 0

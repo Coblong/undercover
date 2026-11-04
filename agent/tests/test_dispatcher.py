@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from langchain_core.exceptions import ModelRateLimitError
 from langchain_core.messages import AIMessage
+from langchain_core.runnables.config import var_child_runnable_config
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import RetryPolicy
 
@@ -350,3 +351,27 @@ def test_a_queue_claim_held_for_a_sign_off_keeps_its_progress(
     dispatcher.run_dispatch(run_id, 5, only("CLM-1003", real_work(saver, model)), FAST)
     ((thread,),) = rows(tmp_path, "SELECT thread_id FROM attempts")
     assert saver.get_tuple({"configurable": {"thread_id": thread}}) is not None
+
+
+def test_each_claim_is_worked_outside_the_dispatchers_run(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+):
+    """Inside the dispatcher's run a claim's trace lost its session and run tag."""
+    seen: list[object] = []
+
+    def run(*args: object, **kwargs: object) -> str:
+        seen.append(var_child_runnable_config.get())
+        return "approve 420.00, paid"
+
+    monkeypatch.setattr(main, "run", run)
+
+    def work(claim_id: str, run_id: int) -> str:
+        return (
+            main.work_claim(claim_id, run_id, InMemorySaver)
+            if claim_id == "CLM-1001"
+            else "decided"
+        )
+
+    dispatcher.run_dispatch(new_dispatch(client), 3, work, FAST)
+    assert seen
+    assert all(config is None for config in seen)

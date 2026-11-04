@@ -229,19 +229,19 @@ Runs the real model on the runs the brief lists, then brings the documents up to
 
 Success criteria:
 
-- [ ] After the kill, the claims the N=3 dispatch left in progress show one open attempt each, and `npm run dev` started again marks that dispatch `stopped`.
-- [ ] The N=25 dispatch's claims in progress carry on as the same attempts: each still has one attempt and the same thread. The start times of the claims it worked from the start fall within a few seconds of each other, so 25 ran at once.
-- [ ] The N=25 run takes well under the sum of its claims' times, and I report both.
-- [ ] Compared with the claims of the N=3 dispatch, each claim worked from the start takes about as long. If they are slower, I report where the time goes, keeping to 4 connections.
-- [ ] A claim held for a sign-off waits while the dispatch runs, and a sign-off made during it pays within five seconds.
-- [ ] No claim fails for want of a database connection: no step or log mentions a pool timeout. Through the Supabase MCP server, `pg_stat_activity` for the `postgres` user never shows more than 12 connections while the N=25 dispatch works, sampled throughout.
-- [ ] The N=25 dispatch's panel shows each claim, its model cost and time, and the summary built from the records.
-- [ ] Both evaluations appear on the Scoreboard with every measure, and the queue page's counts are the same before and after them.
-- [ ] Through Langfuse's API (`GET /api/public/v2/observations`, as `docs/STATUS.md` describes), the claims of the N=25 dispatch are found together by its tag `run-<id>`, one trace group for each claim's session.
-- [ ] Screenshots of the dispatch panel and the Scoreboard in light and dark mode show readable text and the brand's colors.
-- [ ] I report the evaluations' measures as they are, without tuning anything against `data/evals/`.
-- [ ] The five documents describe the product as it now is. `STATUS.md` says how to run a dispatch and an evaluation, what is recorded, the reseed, the live check and its results, and the open items.
-- [ ] `npm run check` passes with `.env` moved out of the way, and the results are reported. `git status` is clean, every phase is committed with the hook run, and nothing is pushed.
+- [x] After the kill, the claims the N=3 dispatch left in progress show one open attempt each, and `npm run dev` started again marks that dispatch `stopped`.
+- [x] The N=25 dispatch's claims in progress carry on as the same attempts: each still has one attempt and the same thread. The start times of the claims it worked from the start fall within a few seconds of each other, so 25 ran at once.
+- [x] The N=25 run takes well under the sum of its claims' times, and I report both.
+- [x] Compared with the claims of the N=3 dispatch, each claim worked from the start takes about as long. If they are slower, I report where the time goes, keeping to 4 connections.
+- [x] A claim held for a sign-off waits while the dispatch runs, and a sign-off made during it pays within five seconds.
+- [x] No claim fails for want of a database connection: no step or log mentions a pool timeout. Dispatch 2 and evaluations 4 and 5 had none. The first evaluation at N=25 (evaluation 3) did stall on the backend's pool, which the live run found and fixed (`with_db`, `backend/tests/test_pool.py`). Through the Supabase MCP server, `pg_stat_activity` for the `postgres` user never shows more than 12 connections while the N=25 dispatch works, sampled throughout.
+- [x] The N=25 dispatch's panel shows each claim, its model cost and time, and the summary built from the records.
+- [x] Both evaluations appear on the Scoreboard with every measure, and the queue page's counts are the same before and after them.
+- [ ] Through Langfuse's API (`GET /api/public/v2/observations`, as `docs/STATUS.md` describes), the claims of the N=25 dispatch are found together by its tag `run-<id>`, one trace group for each claim's session. NOT MET for the dispatch: its traces had no session or tag, because the claim graph ran inside the dispatcher's run. That is fixed in `work_claim`, and the tag was then checked on evaluation 4 (`run-4`: 25 traces in 25 sessions). A second reseed and dispatch would show it on a dispatch.
+- [x] Screenshots (taken with the Playwright library, the MCP server not being available) of the dispatch panel and the Scoreboard in light and dark mode show readable text and the brand's colors.
+- [x] I report the evaluations' measures as they are, without tuning anything against `data/evals/`.
+- [x] The five documents describe the product as it now is. `STATUS.md` says how to run a dispatch and an evaluation, what is recorded, the reseed, the live check and its results, and the open items.
+- [x] `npm run check` passes with `.env` moved out of the way, and the results are reported. `git status` is clean (apart from your own edit to `labs/week2day4.ipynb`, which I left alone), every phase is committed with the hook run, and nothing is pushed.
 
 ## Out of scope
 

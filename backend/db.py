@@ -141,12 +141,6 @@ def transaction(conn: Connection) -> Iterator[None]:
         conn.info["write"] = False
 
 
-def get_db() -> Iterator[Connection]:
-    """Give a request its own connection."""
-    with closing(connect()) as conn:
-        yield conn
-
-
 def init_db() -> None:
     """Create the tables and, when the database is empty, load the data."""
     built = engine()

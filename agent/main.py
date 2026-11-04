@@ -1,5 +1,6 @@
 """The UnderCover Agent: the claim agent, a LangGraph graph that saves its progress."""
 
+import contextvars
 import json
 import logging
 import threading
@@ -232,6 +233,20 @@ def model() -> ChatOpenAI:
     )
 
 
+def reply_cost(message: BaseMessage) -> float:
+    """Return what a model reply cost, as OpenRouter reports it.
+
+    That is `usage.cost`. On a key of UnderCover's own (`is_byok`), OpenRouter
+    charges only its fee there and reports what the provider charged in
+    `cost_details`, so the two are added. Otherwise `cost` already includes it.
+    """
+    usage = message.response_metadata.get("token_usage") or {}
+    cost = usage.get("cost") or 0.0
+    if usage.get("is_byok"):
+        cost += (usage.get("cost_details") or {}).get("upstream_inference_cost") or 0.0
+    return cost
+
+
 def steps_of(message: BaseMessage) -> list[tuple[str, str]]:
     """Turn one message into the steps (kind, text) the team sees."""
     steps: list[tuple[str, str]]
@@ -326,12 +341,11 @@ class ClaimNodes:
     def record_usage(self, message: BaseMessage) -> None:
         """Record the tokens and OpenRouter's cost of a model reply with its run."""
         tokens = message.usage_metadata if isinstance(message, AIMessage) else None
-        reported = (message.response_metadata.get("token_usage") or {}).get("cost")
         body = {
             "run_id": self.run_id,
             "input_tokens": tokens["input_tokens"] if tokens else 0,
             "output_tokens": tokens["output_tokens"] if tokens else 0,
-            "cost": reported or 0.0,
+            "cost": reply_cost(message),
         }
         answer = call("POST", f"/api/claims/{self.claim_id}/model-calls", body)
         if answer.startswith("Error"):
@@ -522,7 +536,9 @@ def work_claim(
     """
     try:
         with working(claim_id):
-            return settle(claim_id, run_id, new_saver, llm)
+            # In a context of its own, so the claim is not a part of the dispatcher's
+            # run: it keeps its own trace, session and run tag in Langfuse.
+            return contextvars.Context().run(settle, claim_id, run_id, new_saver, llm)
     except AlreadyWorking:
         return "in_progress"
 

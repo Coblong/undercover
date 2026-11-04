@@ -1,6 +1,7 @@
 """Routes for claims, documents and what the team and the agent read and write."""
 
 from fastapi import APIRouter, BackgroundTasks
+from sqlalchemy import Connection
 
 from backend import (
     attempts,
@@ -12,7 +13,7 @@ from backend import (
     usage,
     work,
 )
-from backend.deps import ClaimAgent, Db
+from backend.deps import ClaimAgent, with_db
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
@@ -44,25 +45,29 @@ def health() -> dict[str, str]:
 
 
 @router.get("/api/claims", operation_id="list_claims")
-def list_claims(conn: Db) -> list[ClaimSummary]:
+@with_db
+def list_claims(conn: Connection) -> list[ClaimSummary]:
     """List every claim in the queue with where it stands."""
     return queries.list_claims(conn)
 
 
 @router.get("/api/claims/{claim_id}", operation_id="get_claim")
-def get_claim(claim_id: str, conn: Db) -> ClaimDetail:
+@with_db
+def get_claim(claim_id: str, conn: Connection) -> ClaimDetail:
     """Get one claim in full, with its decision, payment and sign-off."""
     return queries.get_claim(conn, claim_id)
 
 
 @router.get("/api/policies/{policy_id}", operation_id="get_policy")
-def get_policy(policy_id: str, conn: Db) -> Policy:
+@with_db
+def get_policy(policy_id: str, conn: Connection) -> Policy:
     """Get one policy with its plan, add-ons, trip and travelers."""
     return queries.get_policy(conn, policy_id)
 
 
 @router.get("/api/claims/{claim_id}/claim-history", operation_id="get_claim_history")
-def get_claim_history(claim_id: str, conn: Db) -> ClaimHistory:
+@with_db
+def get_claim_history(claim_id: str, conn: Connection) -> ClaimHistory:
     """Get the customer's claims filed before this claim, with their outcomes."""
     return queries.get_claim_history(conn, claim_id)
 
@@ -88,40 +93,46 @@ def get_instructions() -> Text:
 
 
 @router.get("/api/handlers", operation_id="list_handlers")
-def list_handlers(conn: Db) -> list[Handler]:
+@with_db
+def list_handlers(conn: Connection) -> list[Handler]:
     """List the claims handlers."""
     return queries.list_handlers(conn)
 
 
 @router.get("/api/claims/{claim_id}/steps", operation_id="list_steps")
-def list_steps(claim_id: str, conn: Db) -> list[Step]:
+@with_db
+def list_steps(claim_id: str, conn: Connection) -> list[Step]:
     """List what the agent has done on a claim, step by step."""
     return queries.list_steps(conn, claim_id)
 
 
 @router.post("/api/claims/{claim_id}/steps", operation_id="add_step")
-def add_step(claim_id: str, body: StepRequest, conn: Db) -> Step:
+@with_db
+def add_step(claim_id: str, body: StepRequest, conn: Connection) -> Step:
     """Record one thing the agent did on a claim."""
     return attempts.add_step(conn, claim_id, body)
 
 
 @router.post("/api/claims/{claim_id}/decision", operation_id="decide_claim")
-def decide_claim(claim_id: str, body: DecisionRequest, conn: Db) -> Outcome:
+@with_db
+def decide_claim(claim_id: str, body: DecisionRequest, conn: Connection) -> Outcome:
     """Record the decision on a claim: approve, decline or refer."""
     return decisions.decide(conn, claim_id, body)
 
 
 @router.post("/api/claims/{claim_id}/payment", operation_id="pay_claim")
-def pay_claim(claim_id: str, body: PaymentRequest, conn: Db) -> Outcome:
+@with_db
+def pay_claim(claim_id: str, body: PaymentRequest, conn: Connection) -> Outcome:
     """Pay an approved claim the amount given."""
     return decisions.pay(conn, claim_id, body)
 
 
 @router.post("/api/claims/{claim_id}/sign-off", operation_id="sign_off_claim")
+@with_db
 def sign_off_claim(
     claim_id: str,
     body: SignOffRequest,
-    conn: Db,
+    conn: Connection,
     background: BackgroundTasks,
     agent: ClaimAgent,
 ) -> Outcome:
@@ -132,7 +143,8 @@ def sign_off_claim(
 
 
 @router.post("/api/claims/{claim_id}/payout", operation_id="calculate_payout")
-def calculate_payout(claim_id: str, body: PayoutRequest, conn: Db) -> Payout:
+@with_db
+def calculate_payout(claim_id: str, body: PayoutRequest, conn: Connection) -> Payout:
     """Work out the payout on an approved claim with UnderCover's payout rules."""
     claim = queries.get_claim(conn, claim_id)
     policy = queries.get_policy(conn, claim.policy_id)
@@ -140,12 +152,16 @@ def calculate_payout(claim_id: str, body: PayoutRequest, conn: Db) -> Payout:
 
 
 @router.post("/api/claims/{claim_id}/model-calls", operation_id="record_model_call")
-def record_model_call(claim_id: str, body: ModelCallRequest, conn: Db) -> Outcome:
+@with_db
+def record_model_call(
+    claim_id: str, body: ModelCallRequest, conn: Connection
+) -> Outcome:
     """Record the tokens and the cost of one model call on a claim."""
     return usage.record_model_call(conn, claim_id, body)
 
 
 @router.post("/api/claims/{claim_id}/work-times", operation_id="record_work_time")
-def record_work_time(claim_id: str, body: WorkTimeRequest, conn: Db) -> Outcome:
+@with_db
+def record_work_time(claim_id: str, body: WorkTimeRequest, conn: Connection) -> Outcome:
     """Record the seconds the agent spent working on a claim."""
     return usage.record_work_time(conn, claim_id, body)

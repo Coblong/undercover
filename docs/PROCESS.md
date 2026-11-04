@@ -32,12 +32,12 @@ When the last phase is done, run `npm run check` and report the results.
 ## Rules
 
 - Add tests with each change. Tests never call a model; use a stub model. Tests never reach Supabase, Langfuse or the agent's service either: the graph's tests use an in-memory checkpointer.
-- For a live run with the real model, reseed first (`npm run seed`) and cap the run at five claims.
+- For a live run with the real model, reseed first (`npm run seed`). A dispatch works the whole queue, and an evaluation works its own copies of the labelled claims, so a live check keeps to the runs the brief lists: they replace the old cap of five claims.
 - Outside a plan, commit each change once you have checked it.
 - Run `npm run check` before you hand work over.
 - Never use `git commit --no-verify`.
 - Never lower a threshold, turn off a rule or exclude a file to get a green run. If a rule looks wrong, stop and ask.
 - Keep `docs/STATUS.md` up to date.
 - Never push.
-- Don't open `data/evals/` unless you're asked to.
+- Don't open `data/evals/` unless you're asked to. Seeding reads the three files the swarm brief named (`decisions.json`, `held_out_claims.json` and `held_out_decisions.json`), for the Scoreboard's answer key.
 - Everything must work on Windows: write `package.json` scripts as `uv run` commands or `.mjs` files.
