@@ -89,8 +89,8 @@ it("lists the evaluations with every measure", async () => {
   const table = await screen.findByRole("table", { name: "Evaluations" });
   const row = within(table).getAllByRole("row")[1];
   expect(row.textContent).toBe(
-    "3Held-out set25openai/gpt-6-lunalowFinished" +
-      "50%50%$1,250.00100%$0.012331.5 s1 min 30 s",
+    "31Held-out set25openai/gpt-6-lunalowFinished" +
+      "50%50%$1,250.00100%1.75$0.0123$0.000431.5 s1 min 30 s",
   );
 });
 
@@ -121,8 +121,8 @@ it("opens an evaluation to its claims, marks a miss, and links to a claim", asyn
   const table = await screen.findByRole("table", { name: "Evaluation claims" });
   const rows = within(table).getAllByRole("row").slice(1);
   expect(rows.map((r) => r.textContent)).toEqual([
-    "EV3-CLM-1104CLM-1104Approved $250.00Approved $250.00Match$0.00$0.010030.0 s",
-    "EV3-CLM-1114CLM-1114DeclinedApproved $1,250.00Miss$1,250.00$0.014633.0 s",
+    "EV3-CLM-1104CLM-1104Approved $250.00Approved $250.00MatchB 2.50YesNo$0.00$0.010030.0 s",
+    "EV3-CLM-1114CLM-1114DeclinedApproved $1,250.00MissNot graded--$1,250.00$0.014633.0 s",
   ]);
   expect(rows[0].className).toBe("");
   expect(rows[1].className).toBe("miss");

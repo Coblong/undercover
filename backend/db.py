@@ -192,6 +192,8 @@ def seed(conn: Connection) -> None:
                     "decision": key["decision"],
                     "payout": float(key["payout"]),
                     "tiny": bool(key["tiny"]),
+                    "reason": key["reason"],
+                    "reference": key["reference"],
                 }
                 for key in load(name)
             ],

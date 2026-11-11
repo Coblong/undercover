@@ -11,10 +11,26 @@ import {
   SET_LABEL,
   VERDICT_LABEL,
   VERDICT_TONE,
+  type Tone,
 } from "./format";
 import type { Evaluation, EvaluationClaim, EvaluationDetail } from "./types";
 
 type EvalSet = Evaluation["eval_set"];
+
+const GRADE_TONE: Record<string, Tone> = {
+  A: "seagreen",
+  B: "cerulean",
+  C: "marigold",
+  F: "raspberry",
+};
+
+const gradeOf = (grade: number | null) =>
+  grade === null ? "-" : grade.toFixed(2);
+
+function yesNo(value: boolean | null) {
+  if (value === null) return <span className="muted">-</span>;
+  return <span>{value ? "Yes" : "No"}</span>;
+}
 
 const anyRunning = (list: Evaluation[]) =>
   list.some((e) => e.state === "running") ? POLL_MS : undefined;
@@ -110,6 +126,7 @@ function EvaluationsTable({
         <thead>
           <tr>
             <th>Evaluation</th>
+            <th>Version</th>
             <th>Set</th>
             <th>Claims</th>
             <th>At once</th>
@@ -120,7 +137,9 @@ function EvaluationsTable({
             <th>Accuracy</th>
             <th>Cost of mistakes</th>
             <th>Straight through</th>
+            <th>Average grade</th>
             <th>Model cost per claim</th>
+            <th>Judge cost</th>
             <th>Time per claim</th>
             <th>Run time</th>
           </tr>
@@ -139,6 +158,7 @@ function EvaluationsTable({
                   {e.run_id}
                 </button>
               </td>
+              <td className="mono">{e.config_version}</td>
               <td>{SET_LABEL[e.eval_set]}</td>
               <td className="mono">{e.claim_count}</td>
               <td className="mono">{e.concurrency}</td>
@@ -151,7 +171,9 @@ function EvaluationsTable({
               <td className="mono">{percent(e.measures.accuracy)}</td>
               <td className="mono">{money(e.measures.cost_of_mistakes)}</td>
               <td className="mono">{percent(e.measures.straight_through)}</td>
+              <td className="mono">{gradeOf(e.measures.grade)}</td>
               <td className="mono">{modelCost(e.measures.cost_per_claim)}</td>
+              <td className="mono">{modelCost(e.measures.judge_cost)}</td>
               <td className="mono">{duration(e.measures.seconds_per_claim)}</td>
               <td className="mono">
                 {e.measures.run_seconds === null
@@ -201,6 +223,9 @@ function ClaimsTable({
             <th>Handler</th>
             <th>Agent</th>
             <th>Result</th>
+            <th>Grade</th>
+            <th>Same grounds</th>
+            <th>Same section</th>
             <th>Cost of the mistake</th>
             <th>Model cost</th>
             <th>Time</th>
@@ -239,6 +264,21 @@ function ClaimsTable({
                   label={claim.right ? "Match" : "Miss"}
                 />
               </td>
+              <td>
+                {claim.letter === null || claim.grade === null ? (
+                  <span className="muted">Not graded</span>
+                ) : (
+                  <span>
+                    <Chip
+                      tone={GRADE_TONE[claim.letter] ?? "marigold"}
+                      label={claim.letter}
+                    />{" "}
+                    <span className="mono">{gradeOf(claim.grade)}</span>
+                  </span>
+                )}
+              </td>
+              <td>{yesNo(claim.same_grounds)}</td>
+              <td>{yesNo(claim.same_section)}</td>
               <td className="mono">{money(claim.mistake_cost)}</td>
               <td className="mono">{modelCost(claim.cost)}</td>
               <td className="mono">{duration(claim.seconds)}</td>

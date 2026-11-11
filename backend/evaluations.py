@@ -3,10 +3,14 @@
 This is the one place that reads the handlers' decisions and the held-out claims.
 """
 
-from fastapi import HTTPException
-from sqlalchemy import Connection, insert, select
+import logging
+from concurrent.futures import ThreadPoolExecutor
 
-from backend import configurations, queries, scoring, usage
+from fastapi import HTTPException
+from sqlalchemy import Connection, func, insert, select
+
+from agent import settings as agent_settings
+from backend import configurations, judge, queries, scoring, usage
 from backend import tables as t
 from backend.db import now, transaction
 from backend.models import (
@@ -17,7 +21,10 @@ from backend.models import (
 )
 from backend.runs import get_run, seconds_between
 
+logger = logging.getLogger(__name__)
+
 ENDED = ("finished", "failed")
+JUDGES_AT_ONCE = 25
 
 
 def copy_id(run_id: int, source_id: str) -> str:
@@ -104,6 +111,10 @@ def results(conn: Connection, run_id: int, eval_set: str) -> list[EvaluationClai
             t.decisions.c.decision.label("agent_decision"),
             t.decisions.c.payout.label("agent_payout"),
             t.decisions.c.explanation.label("reason"),
+            t.evaluation_grades.c.grade,
+            t.evaluation_grades.c.letter,
+            t.evaluation_grades.c.same_grounds,
+            t.evaluation_grades.c.same_section,
         )
         .select_from(t.run_claims)
         .join(t.claims, t.claims.c.claim_id == t.run_claims.c.claim_id)
@@ -113,6 +124,11 @@ def results(conn: Connection, run_id: int, eval_set: str) -> list[EvaluationClai
             & (t.answer_key.c.eval_set == eval_set),
         )
         .outerjoin(t.decisions, t.decisions.c.claim_id == t.run_claims.c.claim_id)
+        .outerjoin(
+            t.evaluation_grades,
+            (t.evaluation_grades.c.run_id == run_id)
+            & (t.evaluation_grades.c.claim_id == t.run_claims.c.claim_id),
+        )
         .where(t.run_claims.c.run_id == run_id)
         .order_by(t.run_claims.c.position)
     ).mappings()
@@ -171,9 +187,13 @@ def get_detail(conn: Connection, run_id: int) -> EvaluationDetail:
         claim_count=len(claims),
         measures=scoring.measures(
             answers,
-            usage.run_cost(conn, run_id),
-            usage.run_seconds(conn, run_id),
-            run_seconds,
+            scoring.Totals(
+                cost=usage.run_cost(conn, run_id),
+                claim_seconds=usage.run_seconds(conn, run_id),
+                run_seconds=run_seconds,
+                grades=[c.grade for c in claims],
+                judge_cost=judge_cost(conn, run_id),
+            ),
         ),
         results=claims,
     )
@@ -187,3 +207,111 @@ def list_evaluations(conn: Connection) -> list[Evaluation]:
         .order_by(t.runs.c.id.desc())
     )
     return [get_evaluation(conn, row.id) for row in ids]
+
+
+def judge_cost(conn: Connection, run_id: int) -> float:
+    """Return what the judge's calls cost for an evaluation."""
+    total = conn.execute(
+        select(func.sum(t.evaluation_grades.c.cost)).where(
+            t.evaluation_grades.c.run_id == run_id
+        )
+    ).scalar_one()
+    return total or 0.0
+
+
+def cases_to_grade(
+    conn: Connection, run_id: int
+) -> list[tuple[str, judge.Case | None]]:
+    """Return each claim with its case for the judge, or None if undecided."""
+    rows = conn.execute(
+        select(
+            t.run_claims.c.claim_id,
+            t.answer_key.c.decision.label("handler_decision"),
+            t.answer_key.c.reason.label("handler_reason"),
+            t.answer_key.c.reference,
+            t.decisions.c.decision.label("agent_decision"),
+            t.decisions.c.explanation,
+            t.decisions.c.policy_section,
+        )
+        .select_from(t.run_claims)
+        .join(
+            t.runs,
+            t.runs.c.id == t.run_claims.c.run_id,
+        )
+        .join(
+            t.answer_key,
+            (t.answer_key.c.claim_id == t.run_claims.c.source_id)
+            & (t.answer_key.c.eval_set == t.runs.c.eval_set),
+        )
+        .outerjoin(t.decisions, t.decisions.c.claim_id == t.run_claims.c.claim_id)
+        .where(t.run_claims.c.run_id == run_id)
+        .order_by(t.run_claims.c.position)
+    ).mappings()
+    return [
+        (
+            row["claim_id"],
+            None
+            if row["agent_decision"] is None
+            else judge.Case(
+                handler_decision=row["handler_decision"],
+                handler_reason=row["handler_reason"],
+                handler_reference=row["reference"],
+                agent_decision=row["agent_decision"],
+                agent_reason=row["explanation"],
+                agent_section=row["policy_section"],
+            ),
+        )
+        for row in rows
+    ]
+
+
+def ask_judge(case: judge.Case) -> judge.Grade | None:
+    """Grade one explanation, or None when the judge could not."""
+    try:
+        return judge.grade(case)
+    except Exception:  # one claim the judge can't grade must not lose the others
+        logger.exception("The judge could not grade a claim")
+        return None
+
+
+def grade_run(conn: Connection, run_id: int) -> None:
+    """Grade the claims of a finished evaluation, in parallel, and keep the grades.
+
+    A claim the agent did not decide gets an F without asking the judge. A claim the
+    judge could not grade is kept as not graded. With `MODEL_NAME` set the judge is
+    not called, so every claim stays not graded.
+    """
+    if agent_settings.model_name():
+        return
+    cases = cases_to_grade(conn, run_id)
+    conn.commit()  # hold no transaction while the judge is called
+    asked = [case for _, case in cases if case is not None]
+    with ThreadPoolExecutor(max_workers=JUDGES_AT_ONCE) as pool:
+        answers = iter(pool.map(ask_judge, asked))
+    rows = []
+    for claim_id, case in cases:
+        if case is None:
+            rows.append(
+                {"run_id": run_id, "claim_id": claim_id, "grade": 0.0, "letter": "F"}
+            )
+            continue
+        answer = next(answers)
+        rows.append(
+            {
+                "run_id": run_id,
+                "claim_id": claim_id,
+                "grade": answer.grade if answer else None,
+                "letter": answer.letter if answer else None,
+                "same_grounds": answer.same_grounds if answer else None,
+                "same_section": answer.same_section if answer else None,
+                "cost": answer.cost if answer else 0.0,
+            }
+        )
+    with transaction(conn):
+        conn.execute(
+            insert(t.evaluation_grades),
+            [
+                {"same_grounds": None, "same_section": None, "cost": 0.0, **row}
+                for row in rows
+            ],
+        )

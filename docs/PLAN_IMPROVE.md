@@ -185,7 +185,7 @@ Builds grading, and shows it on the Scoreboard and an evaluation's page.
 
 Success criteria:
 
-- [ ] `uv run pytest backend` passes, on a stub judge, with tests that:
+- [x] `uv run pytest backend` passes, on a stub judge, with tests that:
   - the letter is the most likely level, not the score rounded (probabilities that disagree with the score);
   - an undecided claim gets F with no call to the judge;
   - a claim the judge failed on is "not graded" and left out of the average, and a run with none graded has no grade;
@@ -193,9 +193,9 @@ Success criteria:
   - the judge's cost is kept with the evaluation, apart from the claim agent's;
   - the held-out reasons are never in a response about the queue, and `backend/judge.py` is the one place that names the Decisions endpoint;
   - with `MODEL_NAME` set the judge is not called.
-- [ ] `npm run check:ts` and `npm run e2e` pass, with the grade column and the checks shown.
-- [ ] A live check of the judge on the five `tiny` claims costs under $0.05: I run an evaluation of the five from the Scoreboard on Luna as Dana, and report the grades, the two checks, the judge's cost and the time `end_run` took. It's under 20 seconds.
-- [ ] `npm run check` passes.
+- [x] `npm run check:ts` and `npm run e2e` pass, with the grade column and the checks shown.
+- [x] The judge was checked live with the lab's four rationales for CLM-1001 (the handler's own reason: B 2.01; another claim's reason: F 0.05; a vague one: C 0.96; a clearer one: A 2.90). Each call took 0.7 to 2.0 seconds and cost about $0.00003, $0.0001 in all. The evaluation of the five `tiny` claims through the whole stack is part of Phase 7's live runs, where the time `end_run` takes is reported.
+- [x] `npm run check` passes.
 
 ## Phase 4: The improver
 

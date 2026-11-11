@@ -54,12 +54,24 @@ def mistake_cost(answer: Answer, decision: str, payout: float) -> float:
     return NEEDLESS_REFERRAL
 
 
-def measures(
-    answers: list[tuple[Answer, str, float]],
-    cost: float,
-    claim_seconds: float,
-    run_seconds: float | None,
-) -> Measures:
+def average_grade(grades: list[float | None]) -> float | None:
+    """Average the grades that exist. A run with no graded claim has no grade."""
+    graded = [g for g in grades if g is not None]
+    return sum(graded) / len(graded) if graded else None
+
+
+@dataclass(frozen=True)
+class Totals:
+    """What an evaluation's records add up to, besides its answers."""
+
+    cost: float
+    claim_seconds: float
+    run_seconds: float | None
+    grades: list[float | None]
+    judge_cost: float
+
+
+def measures(answers: list[tuple[Answer, str, float]], totals: Totals) -> Measures:
     """Work out the measures of a run from each claim's answer and handler decision."""
     total = len(answers) or 1
     return Measures(
@@ -67,7 +79,9 @@ def measures(
         accuracy=sum(is_right(a, d, p) for a, d, p in answers) / total,
         cost_of_mistakes=sum(mistake_cost(a, d, p) for a, d, p in answers),
         straight_through=sum(a.counted[0] != "refer" for a, _, _ in answers) / total,
-        cost_per_claim=cost / total,
-        seconds_per_claim=claim_seconds / total,
-        run_seconds=run_seconds,
+        cost_per_claim=totals.cost / total,
+        seconds_per_claim=totals.claim_seconds / total,
+        run_seconds=totals.run_seconds,
+        grade=average_grade(totals.grades),
+        judge_cost=totals.judge_cost,
     )

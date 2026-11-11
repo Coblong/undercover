@@ -273,6 +273,8 @@ class Measures(BaseModel):
     cost_per_claim: float
     seconds_per_claim: float
     run_seconds: float | None
+    grade: float | None
+    judge_cost: float
 
 
 class Evaluation(BaseModel):
@@ -304,6 +306,10 @@ class EvaluationClaim(BaseModel):
     mistake_cost: float
     cost: float
     seconds: float
+    grade: float | None
+    letter: str | None
+    same_grounds: bool | None
+    same_section: bool | None
 
 
 class EvaluationDetail(Evaluation):

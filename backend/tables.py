@@ -52,6 +52,8 @@ answer_key = Table(
     Column("decision", Text, nullable=False),
     Column("payout", Float, nullable=False),
     Column("tiny", Boolean, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("reference", Text, nullable=False),
 )
 policies = Table(
     "policies",
@@ -195,6 +197,18 @@ steps = Table(
     Column("text", Text, nullable=False),
     Column("created_at", Text, nullable=False),
     sqlite_autoincrement=True,
+)
+
+evaluation_grades = Table(
+    "evaluation_grades",
+    metadata,
+    Column("run_id", Integer, ForeignKey("runs.id"), primary_key=True),
+    Column("claim_id", Text, ForeignKey("claims.claim_id"), primary_key=True),
+    Column("grade", Float),
+    Column("letter", Text),
+    Column("same_grounds", Boolean),
+    Column("same_section", Boolean),
+    Column("cost", Float, nullable=False),
 )
 
 model_calls = Table(

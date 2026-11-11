@@ -13,6 +13,11 @@ export default defineConfig({
   use: { baseURL: "http://localhost:5174" },
   webServer: [
     {
+      command: "node e2e/judge.mjs",
+      url: "http://127.0.0.1:8005/health",
+      reuseExistingServer: false,
+    },
+    {
       command: "node e2e/auth.mjs",
       url: "http://127.0.0.1:8004/health",
       reuseExistingServer: false,
@@ -25,6 +30,8 @@ export default defineConfig({
         UNDERCOVER_AGENT: "http://127.0.0.1:8003",
         BACKEND_URL: "http://127.0.0.1:8001",
         VITE_SUPABASE_URL: "http://127.0.0.1:8004",
+        OPENROUTER_API_KEY: "e2e-key",
+        OPENROUTER_SERVER_URL: "http://127.0.0.1:8005",
       },
       url: "http://127.0.0.1:8001/api/health",
       reuseExistingServer: false,

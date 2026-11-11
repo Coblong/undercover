@@ -173,8 +173,6 @@ test("an evaluation played out through the API is scored on the scoreboard and l
       concurrency: 5,
       eval_set: "held_out",
       tiny: true,
-      model: "openai/gpt-6-luna",
-      reasoning_effort: "low",
     },
   });
   const { run_id: runId } = (await created.json()) as { run_id: number };
@@ -220,12 +218,15 @@ test("an evaluation played out through the API is scored on the scoreboard and l
     .nth(1);
   await expect(newest).toContainText("Finished");
   // Four of five decisions match; one wrongful approval of $1,250.00.
-  await expect(newest.getByRole("cell").nth(7)).toHaveText("80%");
   await expect(newest.getByRole("cell").nth(8)).toHaveText("80%");
-  await expect(newest.getByRole("cell").nth(9)).toHaveText("$1,250.00");
-  await expect(newest.getByRole("cell").nth(10)).toHaveText("80%");
-  await expect(newest.getByRole("cell").nth(11)).toHaveText("$0.0100");
-  await expect(newest.getByRole("cell").nth(12)).toHaveText("10.0 s");
+  await expect(newest.getByRole("cell").nth(9)).toHaveText("80%");
+  await expect(newest.getByRole("cell").nth(10)).toHaveText("$1,250.00");
+  await expect(newest.getByRole("cell").nth(11)).toHaveText("80%");
+  // The judge stand-in grades every explanation 2.4 and charges $0.0002 for it.
+  await expect(newest.getByRole("cell").nth(12)).toHaveText("2.40");
+  await expect(newest.getByRole("cell").nth(13)).toHaveText("$0.0100");
+  await expect(newest.getByRole("cell").nth(14)).toHaveText("$0.0010");
+  await expect(newest.getByRole("cell").nth(15)).toHaveText("10.0 s");
 
   await newest.getByRole("button", { name: String(runId) }).click();
   const claims = page.getByRole("table", { name: "Evaluation claims" });
@@ -235,6 +236,9 @@ test("an evaluation played out through the API is scored on the scoreboard and l
   await expect(miss).toContainText("Miss");
   await expect(claims.getByRole("row", { name: /CLM-1104/ })).toContainText(
     "Match",
+  );
+  await expect(claims.getByRole("row", { name: /CLM-1104/ })).toContainText(
+    "B 2.40YesNo",
   );
   await expect(claims.getByText("Miss")).toHaveCount(1);
 

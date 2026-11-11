@@ -263,6 +263,8 @@ export const finishedEvaluationRow: Evaluation = {
     cost_per_claim: 0.0123,
     seconds_per_claim: 31.5,
     run_seconds: 90,
+    grade: 1.75,
+    judge_cost: 0.0004,
   },
 };
 
@@ -283,6 +285,10 @@ export const finishedEvaluation: EvaluationDetail = {
       mistake_cost: 0,
       cost: 0.01,
       seconds: 30,
+      grade: 2.5,
+      letter: "B",
+      same_grounds: true,
+      same_section: false,
     },
     {
       claim_id: "EV3-CLM-1114",
@@ -298,6 +304,10 @@ export const finishedEvaluation: EvaluationDetail = {
       mistake_cost: 1250,
       cost: 0.0146,
       seconds: 33,
+      grade: null,
+      letter: null,
+      same_grounds: null,
+      same_section: null,
     },
   ],
 };

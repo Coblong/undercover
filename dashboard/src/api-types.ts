@@ -254,11 +254,15 @@ export interface EvaluationClaim {
   claim_id: string;
   cost: number;
   decision_matches: boolean;
+  grade: number | null;
   handler_decision: EvaluationClaimHandlerDecision;
   handler_payout: number;
+  letter: string | null;
   mistake_cost: number;
   reason: string | null;
   right: boolean;
+  same_grounds: boolean | null;
+  same_section: boolean | null;
   seconds: number;
   source_id: string;
   state: EvaluationClaimState;
@@ -316,6 +320,8 @@ export interface Measures {
   cost_of_mistakes: number;
   cost_per_claim: number;
   decision_accuracy: number;
+  grade: number | null;
+  judge_cost: number;
   run_seconds: number | null;
   seconds_per_claim: number;
   straight_through: number;

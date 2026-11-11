@@ -129,7 +129,10 @@ def plan_run(run_id: int, conn: Connection) -> RunClaims:
 @with_db
 def end_run(run_id: int, body: EndRunRequest, conn: Connection) -> Dispatch:
     """End a dispatch or an evaluation that is running."""
-    return runs.end(conn, run_id, body.state)
+    ended = runs.end(conn, run_id, body.state)
+    if body.state == "finished" and runs.get_run(conn, run_id)["kind"] == "evaluation":
+        evaluations.grade_run(conn, run_id)
+    return ended
 
 
 @router.post("/api/runs/{run_id}/claims/{claim_id}/start", operation_id="start_claim")
