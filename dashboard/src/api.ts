@@ -46,14 +46,28 @@ async function reasonFor(response: Response): Promise<string> {
   return fallback;
 }
 
-export async function postJson(path: string, body?: unknown): Promise<void> {
+async function send(
+  method: "POST" | "PUT",
+  path: string,
+  body: unknown,
+): Promise<Response> {
   const response = await fetch(path, {
-    method: "POST",
+    method,
     headers: { "content-type": "application/json", ...(await signedIn()) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   check(response);
   if (!response.ok) throw new ApiError(await reasonFor(response));
+  return response;
+}
+
+export async function postJson(path: string, body?: unknown): Promise<void> {
+  await send("POST", path, body);
+}
+
+export async function putJson<T>(path: string, body: unknown): Promise<T> {
+  const response = await send("PUT", path, body);
+  return (await response.json()) as T;
 }
 
 /** The words to show for a failed action: the backend's reason, when it gave one. */

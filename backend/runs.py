@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from fastapi import HTTPException
 from sqlalchemy import Connection, func, insert, select, update
 
-from backend import queries, usage
+from backend import configurations, queries, usage
 from backend import tables as t
 from backend.db import now, transaction
 from backend.models import (
@@ -49,13 +49,15 @@ def create_dispatch(conn: Connection, body: CreateDispatchRequest) -> Dispatch:
     with transaction(conn):
         if conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).first():
             raise HTTPException(409, "A dispatch or an evaluation is already running")
+        version = configurations.get_row(conn, configurations.current_version(conn))
         run_id = conn.execute(
             insert(t.runs)
             .values(
                 kind="dispatch",
                 concurrency=body.concurrency,
-                model=body.model,
-                reasoning_effort=body.reasoning_effort,
+                model=version["model"],
+                reasoning_effort=version["reasoning_effort"],
+                config_version=version["version"],
                 state="running",
                 started_at=now(),
             )
@@ -176,6 +178,7 @@ def get_dispatch(conn: Connection, run_id: int) -> Dispatch:
         concurrency=run["concurrency"],
         model=run["model"],
         reasoning_effort=run["reasoning_effort"],
+        config_version=run["config_version"],
         state=run["state"],
         started_at=run["started_at"],
         ended_at=run["ended_at"],

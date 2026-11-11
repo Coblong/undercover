@@ -47,23 +47,6 @@ test("what the agent read is listed on the claim", async ({
   ).toHaveText(reads);
 });
 
-test("the claim agent's instructions are shown and cannot be changed", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Instructions" }).click();
-  const instructions = page.getByRole("region", { name: "Agent instructions" });
-  await expect(
-    instructions.getByRole("heading", { name: "Running the queue" }),
-  ).toHaveCount(0);
-  await expect(
-    instructions.getByRole("heading", { name: "Working a claim" }),
-  ).toBeVisible();
-  await expect(instructions).not.toContainText("write_todos");
-  await expect(instructions).toContainText("get_document_section");
-  await expect(page.getByRole("textbox")).toHaveCount(0);
-});
-
 test("a handler who can't sign off is told so, and the backend refuses it too", async ({
   page,
   request,

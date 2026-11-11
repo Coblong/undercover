@@ -39,8 +39,6 @@ logger = logging.getLogger(__name__)
 ClaimGraph = CompiledStateGraph["ClaimState", None, "ClaimState", "ClaimState"]
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
-DEFAULT_MODEL = "openai/gpt-6-luna"
-DEFAULT_EFFORT = "low"
 STEP_LIMIT = 600
 CALL_LIMIT = 30
 RECURSION_LIMIT = 3 * CALL_LIMIT + 20
@@ -214,22 +212,15 @@ def claim_tools(claim_id: str) -> list[BaseTool]:
     ]
 
 
-def model_choice() -> tuple[str, str]:
-    """Return the model and its reasoning effort ("none" when MODEL_NAME is set)."""
-    name = settings.model_name()
-    return (name, "none") if name else (DEFAULT_MODEL, DEFAULT_EFFORT)
-
-
-def model() -> ChatOpenAI:
-    """Return the model named in MODEL_NAME, or GPT-6 Luna by default."""
-    name, effort = model_choice()
+def model(name: str, effort: str) -> ChatOpenAI:
+    """Return a model on OpenRouter. The effort `default` leaves it to the model."""
     return ChatOpenAI(
         model=name,
         base_url=OPENROUTER_BASE_URL,
         api_key=SecretStr(settings.api_key()),
         timeout=MODEL_TIMEOUT,
         max_retries=MODEL_RETRIES,
-        reasoning_effort=None if effort == "none" else effort,
+        reasoning_effort=None if effort == "default" else effort,
     )
 
 
@@ -479,8 +470,21 @@ def run(
     timed and recorded with the run, a failed stretch included. A pause for a
     sign-off ends the stretch, so the wait is never counted.
     """
-    instructions = json.loads(call("GET", "/api/instructions/claim"))["text"]
-    nodes = ClaimNodes(claim_id, instructions, llm or model(), run_id)
+    path = (
+        "/api/configuration/current"
+        if run_id is None
+        else f"/api/runs/{run_id}/configuration"
+    )
+    answer = call("GET", path)
+    if answer.startswith("Error"):
+        raise AgentError(answer)
+    configuration = json.loads(answer)
+    nodes = ClaimNodes(
+        claim_id,
+        configuration["instructions"],
+        llm or model(configuration["model"], configuration["reasoning_effort"]),
+        run_id,
+    )
     graph = nodes.compile(checkpointer or InMemorySaver())
     config = {
         **tracing.config_for(thread_id, run_id),

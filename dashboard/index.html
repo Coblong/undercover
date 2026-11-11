@@ -12,6 +12,16 @@
     />
   </head>
   <body>
+    <script>
+      try {
+        const appearance = localStorage.getItem("undercover-appearance");
+        if (appearance === "light" || appearance === "dark") {
+          document.documentElement.dataset.theme = appearance;
+        }
+      } catch {
+        // No stored choice: follow the computer.
+      }
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

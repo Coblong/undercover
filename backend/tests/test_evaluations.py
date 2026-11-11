@@ -20,8 +20,6 @@ def create(
         "concurrency": 5,
         "eval_set": eval_set,
         "tiny": tiny,
-        "model": "openai/gpt-6-luna",
-        "reasoning_effort": "low",
         **changes,
     }
     response = client.post("/api/runs/evaluation", json=body)
@@ -325,7 +323,7 @@ def test_evaluations_are_listed_newest_first_with_their_settings(client: TestCli
     assert client.get("/api/evaluations").json() == []
     first = create(client, "evaluation", True, concurrency=2)
     end(client, first["run_id"])
-    second = create(client, "held_out", False, concurrency=9, reasoning_effort="none")
+    second = create(client, "held_out", False, concurrency=9)
     listed = client.get("/api/evaluations").json()
     assert [e["run_id"] for e in listed] == [second["run_id"], first["run_id"]]
     assert (listed[0]["eval_set"], listed[0]["tiny"], listed[0]["concurrency"]) == (
@@ -333,7 +331,8 @@ def test_evaluations_are_listed_newest_first_with_their_settings(client: TestCli
         False,
         9,
     )
-    assert listed[0]["reasoning_effort"] == "none"
+    assert listed[0]["reasoning_effort"] == "low"
+    assert listed[0]["config_version"] == 1
     assert listed[1]["claim_count"] == 5
     assert "results" not in listed[0]
 

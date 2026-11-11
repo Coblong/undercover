@@ -163,19 +163,6 @@ def test_a_dispatch_starts_at_once_and_is_recorded(
     assert {run_id for _, run_id in workers.worked} == {run["run_id"]}
 
 
-def test_a_model_from_the_environment_is_recorded_with_no_effort(
-    client: TestClient,
-    agent_service: TestClient,
-    workers: Workers,
-    monkeypatch: pytest.MonkeyPatch,
-):
-    monkeypatch.setenv("MODEL_NAME", "openrouter/free")
-    workers.release.set()
-    agent_service.post("/dispatches", json={"concurrency": 3})
-    run = until_ended(client)
-    assert (run["model"], run["reasoning_effort"]) == ("openrouter/free", "none")
-
-
 def test_a_second_start_is_refused_while_one_is_running(
     client: TestClient, agent_service: TestClient, workers: Workers
 ):

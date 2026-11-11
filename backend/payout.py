@@ -10,7 +10,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from backend.db import load, payout_limit
+from backend.db import load
 
 CASH_LIMIT = 100.0
 HOTEL_NIGHT_LIMIT = 350.0
@@ -162,7 +162,9 @@ def benefit_maximum(policy: dict[str, Any], benefit: Benefit) -> float:
     return maximum
 
 
-def work_out_payout(policy: dict[str, Any], body: PayoutRequest) -> Payout:
+def work_out_payout(
+    policy: dict[str, Any], body: PayoutRequest, limit: float
+) -> Payout:
     """Work out the payout on an approved claim, following section 10 of the wording."""
     calculation = [
         eligible_amount(line, policy) for line in body.lines if line.kind != "cash"
@@ -200,6 +202,4 @@ def work_out_payout(policy: dict[str, Any], body: PayoutRequest) -> Payout:
         total = 0.0
 
     payout = round(total, 2)
-    return Payout(
-        calculation=calculation, payout=payout, needs_sign_off=payout > payout_limit()
-    )
+    return Payout(calculation=calculation, payout=payout, needs_sign_off=payout > limit)

@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from conftest import Agents
 
-DISPATCH = {"concurrency": 3, "model": "openai/gpt-6-luna", "reasoning_effort": "low"}
+DISPATCH = {"concurrency": 3}
 SECTION = "3. Trip Delay"
 
 
@@ -44,13 +44,14 @@ def latest(client: TestClient) -> dict[str, Any]:
 
 def test_a_dispatch_is_created_running_with_its_settings(client: TestClient):
     assert client.get("/api/dispatches/latest").json() is None
-    run = create(client, concurrency=7, reasoning_effort="none")
+    run = create(client, concurrency=7)
     assert run["state"] == "running"
     assert (run["concurrency"], run["model"], run["reasoning_effort"]) == (
         7,
         "openai/gpt-6-luna",
-        "none",
+        "low",
     )
+    assert run["config_version"] == 1
     assert run["claims"] == []
     assert run["summary"] is None
     assert latest(client)["run_id"] == run["run_id"]

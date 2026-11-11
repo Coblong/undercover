@@ -67,7 +67,7 @@ def test_unknown_sections_and_documents(client: TestClient):
 
 
 def test_the_claim_agents_instructions(client: TestClient):
-    claim = client.get("/api/instructions/claim").json()["text"]
+    claim = client.get("/api/configuration/current").json()["instructions"]
     assert "get_document_section" in claim
     assert client.get("/api/instructions/queue").status_code == 404
 
@@ -100,19 +100,17 @@ def test_unknown_ids_are_404(client: TestClient):
 def test_the_instructions_carry_the_numbers_from_company_data(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ):
-    text = client.get("/api/instructions/claim").json()["text"]
+    text = client.get("/api/configuration/current").json()["instructions"]
     assert "A payout over $1,000 needs" in text
     assert "within 90 days" in text
     assert "filed 3 claims within 12 months" in text
 
     changed = {
-        "payout_approval_limit": 750,
         "claim_filing_window_days": 60,
         "repeat_claim_review": {"claims": 4, "within_months": 6},
     }
     monkeypatch.setattr(instructions, "load", lambda name: changed)
-    text = client.get("/api/instructions/claim").json()["text"]
-    assert "A payout over $750 needs" in text
+    text = client.get("/api/configuration/current").json()["instructions"]
     assert "within 60 days" in text
     assert "filed 4 claims within 6 months" in text
 

@@ -4,7 +4,6 @@ from fastapi import HTTPException
 from sqlalchemy import Connection, func, select, tuple_
 
 from backend import tables as t
-from backend.db import payout_limit
 from backend.models import (
     ClaimDetail,
     ClaimHistory,
@@ -116,7 +115,7 @@ def get_claim(conn: Connection, claim_id: str) -> ClaimDetail:
             "needs_sign_off": bool(
                 decision
                 and decision["decision"] == "approve"
-                and decision["payout"] > payout_limit()
+                and decision["payout"] > decision["approval_limit"]
                 and not sign_off
             ),
         }

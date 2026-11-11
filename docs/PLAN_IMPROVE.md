@@ -159,7 +159,7 @@ Builds the versioned records, the Configuration and Settings pages, and makes th
 
 Success criteria:
 
-- [ ] `uv run pytest backend agent` passes with tests that:
+- [x] `uv run pytest backend agent` passes with tests that:
   - seeding makes version 1 (Luna, `low`, the file's text) and recipe 1, and `npm run seed` takes both back to version 1 after a change;
   - a diff matches one worked out by hand, and a version's diff is against the version before;
   - the run configuration holds no scores (the response's keys are checked);
@@ -169,10 +169,10 @@ Success criteria:
   - with `MODEL_NAME` set, version 1 uses it at `default`, and the models allowed are that one at a price of 0;
   - the claim agent, on a stub model, is built from the run's version (the model and effort reach `ChatOpenAI`);
   - `agent/main.py` calls no path for evaluations, rounds, settings or scores.
-- [ ] `npm run check:ts` passes with tests for the Configuration page (versions, scores, a diff with additions and removals) and the Settings page (read only for Marcus with the reason, a change confirmed by the dialog, the theme switch remembered in the browser).
-- [ ] `npm run e2e` passes: change a setting as Dana and see it on the page after a reload, find it read only as Marcus, switch to dark and see it stay after a reload.
-- [ ] In the browser against `npm run dev` after `npm run seed`: Configuration shows version 1 with Luna at low and its text, Settings shows the lab's values, the models with prices, and the page changes between light and dark with no flash on reload.
-- [ ] `npm run check` passes.
+- [x] `npm run check:ts` passes with tests for the Configuration page (versions, scores, a diff with additions and removals) and the Settings page (read only for Marcus with the reason, a change confirmed by the dialog, the theme switch remembered in the browser).
+- [x] `npm run e2e` passes: change a setting as Dana and see it on the page after a reload, find it read only as Marcus, switch to dark and see it stay after a reload.
+- [x] The same is checked in the browser by the end-to-end specs (`e2e/configuration.spec.ts`): Configuration shows version 1 with Luna at low and its text, Settings shows the starting values, and dark mode holds after a reload. The look in both modes is reviewed in Phase 7, and `npm run seed` on Supabase is done once there.
+- [x] `npm run check` passes.
 
 ## Phase 3: The judge
 

@@ -3,11 +3,13 @@ import type {
   ClaimDetail,
   ClaimHistory,
   ClaimSummary,
+  ConfigurationVersion,
   Dispatch,
   Evaluation,
   EvaluationDetail,
   Handler,
   Policy,
+  SettingsView,
 } from "./types";
 
 export const summaries: ClaimSummary[] = [
@@ -75,6 +77,7 @@ export const decidedClaim: ClaimDetail = {
       "The delay passed the waiting period and the costs are covered.",
     policy_section: "3. Trip Delay",
     decided_at: "2026-10-15T10:00:00+00:00",
+    approval_limit: 1000,
   },
   payment: {
     amount: 420,
@@ -177,6 +180,7 @@ export const waitingForSignOff: ClaimDetail = {
     explanation: "Covered.",
     policy_section: "5. Baggage and Personal Effects",
     decided_at: "2026-10-15T10:00:00+00:00",
+    approval_limit: 1000,
   },
 };
 
@@ -185,6 +189,7 @@ export const runningDispatch: Dispatch = {
   concurrency: 3,
   model: "openai/gpt-6-luna",
   reasoning_effort: "low",
+  config_version: 1,
   state: "running",
   started_at: "2026-11-03T10:00:00+00:00",
   ended_at: null,
@@ -245,6 +250,7 @@ export const finishedEvaluationRow: Evaluation = {
   concurrency: 5,
   model: "openai/gpt-6-luna",
   reasoning_effort: "low",
+  config_version: 1,
   state: "finished",
   started_at: "2026-11-03T10:00:00+00:00",
   ended_at: "2026-11-03T10:01:30+00:00",
@@ -302,4 +308,81 @@ export const evaluationCopy: ClaimDetail = {
   state: "decided",
   needs_sign_off: true,
   evaluation_id: 3,
+};
+
+export const versionOne: ConfigurationVersion = {
+  version: 1,
+  instructions: "Decide the claim.\nUse the wording.",
+  model: "openai/gpt-6-luna",
+  reasoning_effort: "low",
+  reason: "The claim agent as it was built.",
+  proposed_by: "Seed",
+  approved_by: null,
+  approved_at: null,
+  created_at: "2026-11-01T09:00:00+00:00",
+  current: false,
+  previous_model: null,
+  previous_reasoning_effort: null,
+  diff: [],
+};
+
+export const versionTwo: ConfigurationVersion = {
+  ...versionOne,
+  version: 2,
+  instructions: "Decide the claim.\nUse the wording.\nNever guess.",
+  model: "google/gemini-3.5-flash-lite",
+  reasoning_effort: "minimal",
+  reason: "Approvals of declined claims need a rule.",
+  proposed_by: "Improver, round 1",
+  approved_by: "Dana Whitfield",
+  approved_at: "2026-11-02T10:00:00+00:00",
+  current: true,
+  previous_model: "openai/gpt-6-luna",
+  previous_reasoning_effort: "low",
+  diff: [
+    { kind: "context", text: "Use the wording." },
+    { kind: "remove", text: "Old line" },
+    { kind: "add", text: "Never guess." },
+  ],
+};
+
+export const settingsView: SettingsView = {
+  values: {
+    approval_limit: 1000,
+    objectives: { accuracy: 0.6, grade: 1 },
+    noise: {
+      accuracy: 0.1,
+      grade: 0.15,
+      cost_per_claim: 0.15,
+      seconds_per_claim: 0.15,
+    },
+    tolerance: {
+      accuracy: 0.1,
+      grade: 0.15,
+      cost_per_claim: 1,
+      seconds_per_claim: 0.25,
+    },
+    spending_limit: 0.5,
+    agents_at_once: 25,
+  },
+  changes: [
+    {
+      key: "agents_at_once",
+      changed_by: "Dana Whitfield",
+      changed_at: "2026-11-03T10:00:00+00:00",
+    },
+    {
+      key: "approval_limit",
+      changed_by: null,
+      changed_at: "2026-11-01T09:00:00+00:00",
+    },
+  ],
+  models: [
+    {
+      model: "openai/gpt-6-luna",
+      reasoning_efforts: ["none", "low", "medium"],
+      input_price: 0.1,
+      output_price: 0.5,
+    },
+  ],
 };

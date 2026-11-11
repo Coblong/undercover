@@ -35,7 +35,7 @@ def work(
     **kwargs: Any,
 ) -> payout.Payout:
     body = PayoutRequest(benefit=benefit, lines=lines, paid_by_others=paid_by_others)
-    return payout.work_out_payout(policy(**kwargs), body)
+    return payout.work_out_payout(policy(**kwargs), body, 1000)
 
 
 def test_a_plain_expense_is_paid_in_full():

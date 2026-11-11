@@ -20,6 +20,9 @@ ALLOWED_FILES = {
     "held_out_claims.json",
     "held_out_decisions.json",
     "instructions_claim.md",
+    "recipe_improver.md",
+    "improvement.json",
+    "models.json",
 }
 
 
@@ -64,7 +67,8 @@ def test_only_allowed_files_are_read(tmp_path: Path, monkeypatch: pytest.MonkeyP
             "/api/claims/CLM-1001",
             "/api/documents/wording/sections/3",
             "/api/documents/manual/sections/3",
-            "/api/instructions/claim",
+            "/api/configuration/current",
+            "/api/settings",
         ):
             client.get(path)
         client.post(

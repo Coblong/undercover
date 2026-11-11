@@ -8,7 +8,7 @@ from sqlalchemy import Connection, delete, func, insert, select, update
 
 from backend import queries, runs
 from backend import tables as t
-from backend.db import now, payout_limit, transaction
+from backend.db import now, transaction
 from backend.models import Outcome, StartedClaim, State, Step, StepRequest
 
 MAX_FAILED_ATTEMPTS = 2
@@ -21,13 +21,15 @@ UNFINISHED_TEXT: dict[Unfinished, str] = {
 }
 
 
-def settled_state(decision: str, payout: float, copy: bool = False) -> State:
+def settled_state(
+    decision: str, payout: float, limit: float, copy: bool = False
+) -> State:
     """Return the state a claim rests in once it has this decision.
 
     An evaluation's copy is never held for a sign-off: nobody can sign it off, so
     a held approval counts as finished.
     """
-    if decision == "approve" and payout > payout_limit() and not copy:
+    if decision == "approve" and payout > limit and not copy:
         return "waiting_for_sign_off"
     return "decided"
 
@@ -189,7 +191,10 @@ def unfinished(conn: Connection, claim_id: str) -> Unfinished | None:
     claim = queries.get_claim(conn, claim_id)
     if claim.decision is None:
         return "not_decided"
-    payable = claim.decision.payout <= payout_limit() or claim.sign_off is not None
+    payable = (
+        claim.decision.payout <= claim.decision.approval_limit
+        or claim.sign_off is not None
+    )
     if claim.decision.decision == "approve" and payable and claim.payment is None:
         return "not_paid"
     return None

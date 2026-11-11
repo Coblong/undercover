@@ -6,7 +6,7 @@ This is the one place that reads the handlers' decisions and the held-out claims
 from fastapi import HTTPException
 from sqlalchemy import Connection, insert, select
 
-from backend import queries, scoring, usage
+from backend import configurations, queries, scoring, usage
 from backend import tables as t
 from backend.db import now, transaction
 from backend.models import (
@@ -46,13 +46,15 @@ def create(conn: Connection, body: CreateEvaluationRequest) -> Evaluation:
     with transaction(conn):
         if conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).first():
             raise HTTPException(409, "A dispatch or an evaluation is already running")
+        version = configurations.get_row(conn, configurations.current_version(conn))
         run_id = conn.execute(
             insert(t.runs)
             .values(
                 kind="evaluation",
                 concurrency=body.concurrency,
-                model=body.model,
-                reasoning_effort=body.reasoning_effort,
+                model=version["model"],
+                reasoning_effort=version["reasoning_effort"],
+                config_version=version["version"],
                 state="running",
                 eval_set=body.eval_set,
                 tiny=body.tiny,
@@ -162,6 +164,7 @@ def get_detail(conn: Connection, run_id: int) -> EvaluationDetail:
         concurrency=run["concurrency"],
         model=run["model"],
         reasoning_effort=run["reasoning_effort"],
+        config_version=run["config_version"],
         state=run["state"],
         started_at=run["started_at"],
         ended_at=run["ended_at"],

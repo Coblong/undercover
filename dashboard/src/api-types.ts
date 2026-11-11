@@ -22,6 +22,8 @@ export type DecisionDecision = "approve" | "decline" | "refer";
 
 export type DecisionRequestDecision = "approve" | "decline" | "refer";
 
+export type DiffLineKind = "add" | "remove" | "context";
+
 export type DispatchState = "running" | "finished" | "failed" | "stopped";
 
 export type DispatchClaimDecision = "approve" | "decline" | "refer";
@@ -91,6 +93,13 @@ export type StepKind =
 export type StepRequestKind =
   "tool_call" | "tool_result" | "message" | "read" | "error";
 
+export interface AllowedModel {
+  input_price: number;
+  model: string;
+  output_price: number;
+  reasoning_efforts: string[];
+}
+
 export interface ClaimDetail {
   amount_claimed: number;
   claim_id: string;
@@ -128,21 +137,34 @@ export interface ClaimSummary {
   summary: string;
 }
 
+export interface ConfigurationVersion {
+  approved_at: string | null;
+  approved_by: string | null;
+  created_at: string;
+  current: boolean;
+  diff: DiffLine[];
+  instructions: string;
+  model: string;
+  previous_model: string | null;
+  previous_reasoning_effort: string | null;
+  proposed_by: string;
+  reason: string;
+  reasoning_effort: string;
+  version: number;
+}
+
 export interface CreateDispatchRequest {
   concurrency: number;
-  model: string;
-  reasoning_effort: string;
 }
 
 export interface CreateEvaluationRequest {
   concurrency: number;
   eval_set: CreateEvaluationRequestEvalSet;
-  model: string;
-  reasoning_effort: string;
   tiny: boolean;
 }
 
 export interface Decision {
+  approval_limit: number;
   decided_at: string;
   decision: DecisionDecision;
   explanation: string;
@@ -157,10 +179,16 @@ export interface DecisionRequest {
   policy_section: string;
 }
 
+export interface DiffLine {
+  kind: DiffLineKind;
+  text: string;
+}
+
 export interface Dispatch {
   claim_seconds: number;
   claims: DispatchClaim[];
   concurrency: number;
+  config_version: number;
   cost: number;
   ended_at: string | null;
   model: string;
@@ -208,6 +236,7 @@ export interface EndRunRequest {
 export interface Evaluation {
   claim_count: number;
   concurrency: number;
+  config_version: number;
   ended_at: string | null;
   eval_set: EvaluationEvalSet;
   measures: Measures;
@@ -238,6 +267,7 @@ export interface EvaluationClaim {
 export interface EvaluationDetail {
   claim_count: number;
   concurrency: number;
+  config_version: number;
   ended_at: string | null;
   eval_set: EvaluationDetailEvalSet;
   measures: Measures;
@@ -296,6 +326,11 @@ export interface ModelCallRequest {
   input_tokens: number;
   output_tokens: number;
   run_id: number | null;
+}
+
+export interface Objectives {
+  accuracy: number;
+  grade: number;
 }
 
 export interface Outcome {
@@ -359,6 +394,13 @@ export interface RunClaims {
   run_id: number;
 }
 
+export interface RunConfiguration {
+  instructions: string;
+  model: string;
+  reasoning_effort: string;
+  version: number;
+}
+
 export interface Section {
   document: SectionDocument;
   number: number;
@@ -369,6 +411,27 @@ export interface Section {
 export interface SectionRef {
   number: number;
   title: string;
+}
+
+export interface SettingChange {
+  changed_at: string;
+  changed_by: string | null;
+  key: string;
+}
+
+export interface SettingsValues {
+  agents_at_once: number;
+  approval_limit: number;
+  noise: Thresholds;
+  objectives: Objectives;
+  spending_limit: number;
+  tolerance: Thresholds;
+}
+
+export interface SettingsView {
+  changes: SettingChange[];
+  models: AllowedModel[];
+  values: SettingsValues;
 }
 
 export interface SignOff {
@@ -410,8 +473,11 @@ export interface StoppedRuns {
   stopped: number;
 }
 
-export interface Text {
-  text: string;
+export interface Thresholds {
+  accuracy: number;
+  cost_per_claim: number;
+  grade: number;
+  seconds_per_claim: number;
 }
 
 export interface Trip {

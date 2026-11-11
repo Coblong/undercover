@@ -6,11 +6,12 @@ from sqlalchemy import Connection
 from backend import (
     attempts,
     auth,
+    configurations,
     decisions,
     documents,
-    instructions,
     payout,
     queries,
+    settings_store,
     usage,
     work,
 )
@@ -19,6 +20,7 @@ from backend.models import (
     ClaimDetail,
     ClaimHistory,
     ClaimSummary,
+    ConfigurationVersion,
     DecisionRequest,
     DocumentName,
     Handler,
@@ -26,11 +28,13 @@ from backend.models import (
     Outcome,
     PaymentRequest,
     Policy,
+    RunConfiguration,
     Section,
     SectionRef,
+    SettingsValues,
+    SettingsView,
     Step,
     StepRequest,
-    Text,
     WorkTimeRequest,
 )
 from backend.payout import Payout, PayoutRequest
@@ -84,12 +88,6 @@ def list_document_sections(document: DocumentName) -> list[SectionRef]:
 def get_document_section(document: DocumentName, number: int) -> Section:
     """Get one section of the policy wording or the claims manual."""
     return documents.get_section(document, number)
-
-
-@router.get("/api/instructions/claim", operation_id="get_instructions")
-def get_instructions() -> Text:
-    """Get the claim agent's instructions."""
-    return Text(text=instructions.render())
 
 
 @router.get("/api/me", operation_id="get_me")
@@ -156,7 +154,9 @@ def calculate_payout(claim_id: str, body: PayoutRequest, conn: Connection) -> Pa
     """Work out the payout on an approved claim with UnderCover's payout rules."""
     claim = queries.get_claim(conn, claim_id)
     policy = queries.get_policy(conn, claim.policy_id)
-    return payout.work_out_payout(policy.model_dump(), body)
+    return payout.work_out_payout(
+        policy.model_dump(), body, settings_store.approval_limit(conn)
+    )
 
 
 @router.post("/api/claims/{claim_id}/model-calls", operation_id="record_model_call")
@@ -173,3 +173,43 @@ def record_model_call(
 def record_work_time(claim_id: str, body: WorkTimeRequest, conn: Connection) -> Outcome:
     """Record the seconds the agent spent working on a claim."""
     return usage.record_work_time(conn, claim_id, body)
+
+
+@router.get("/api/configurations", operation_id="list_configurations")
+@with_db
+def list_configurations(conn: Connection) -> list[ConfigurationVersion]:
+    """List every version of the claim agent's configuration, newest first."""
+    return configurations.list_versions(conn)
+
+
+@router.get("/api/configuration/current", operation_id="get_current_configuration")
+@with_db
+def get_current_configuration(conn: Connection) -> RunConfiguration:
+    """Get the current version of the claim agent's configuration, with no scores."""
+    return configurations.current_run_configuration(conn)
+
+
+@router.get("/api/runs/{run_id}/configuration", operation_id="get_run_configuration")
+@with_db
+def get_run_configuration(run_id: int, conn: Connection) -> RunConfiguration:
+    """Get the version of the claim agent's configuration a run used, with no scores."""
+    return configurations.run_configuration(
+        conn, configurations.run_version(conn, run_id)
+    )
+
+
+@router.get("/api/settings", operation_id="get_settings")
+@with_db
+def get_settings(conn: Connection) -> SettingsView:
+    """Get the platform's settings and the models the claim agent may use."""
+    return settings_store.view(conn)
+
+
+@router.put("/api/settings", operation_id="update_settings")
+@with_db
+def update_settings(
+    body: SettingsValues, email: auth.SignedIn, conn: Connection
+) -> SettingsView:
+    """Change the platform's settings as a handler who can sign off over the limit."""
+    handler = auth.senior_handler_for(conn, email, "change a setting")
+    return settings_store.update_settings(conn, handler, body)

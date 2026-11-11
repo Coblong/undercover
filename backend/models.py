@@ -40,6 +40,7 @@ class Decision(BaseModel):
     explanation: str
     policy_section: str
     decided_at: str
+    approval_limit: float
 
 
 class Payment(BaseModel):
@@ -177,15 +178,10 @@ class WorkTimeRequest(BaseModel):
 
 
 RunState = Literal["running", "finished", "failed", "stopped"]
-Effort = Annotated[
-    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)
-]
 
 
 class CreateDispatchRequest(BaseModel):
     concurrency: int = Field(ge=1, le=25)
-    model: Label
-    reasoning_effort: Effort
 
 
 class StartDispatchRequest(BaseModel):
@@ -245,6 +241,7 @@ class Dispatch(BaseModel):
     concurrency: int
     model: str
     reasoning_effort: str
+    config_version: int
     state: RunState
     started_at: str
     ended_at: str | None
@@ -265,8 +262,7 @@ class StartEvaluationRequest(BaseModel):
 
 
 class CreateEvaluationRequest(StartEvaluationRequest):
-    model: Label
-    reasoning_effort: Effort
+    pass
 
 
 class Measures(BaseModel):
@@ -286,6 +282,7 @@ class Evaluation(BaseModel):
     concurrency: int
     model: str
     reasoning_effort: str
+    config_version: int
     state: RunState
     started_at: str
     ended_at: str | None
@@ -311,3 +308,71 @@ class EvaluationClaim(BaseModel):
 
 class EvaluationDetail(Evaluation):
     results: list[EvaluationClaim]
+
+
+class DiffLine(BaseModel):
+    kind: Literal["add", "remove", "context"]
+    text: str
+
+
+class ConfigurationVersion(BaseModel):
+    version: int
+    instructions: str
+    model: str
+    reasoning_effort: str
+    reason: str
+    proposed_by: str
+    approved_by: str | None
+    approved_at: str | None
+    created_at: str
+    current: bool
+    previous_model: str | None
+    previous_reasoning_effort: str | None
+    diff: list[DiffLine]
+
+
+class RunConfiguration(BaseModel):
+    version: int
+    instructions: str
+    model: str
+    reasoning_effort: str
+
+
+class Thresholds(BaseModel):
+    accuracy: float = Field(ge=0, allow_inf_nan=False)
+    grade: float = Field(ge=0, allow_inf_nan=False)
+    cost_per_claim: float = Field(ge=0, allow_inf_nan=False)
+    seconds_per_claim: float = Field(ge=0, allow_inf_nan=False)
+
+
+class Objectives(BaseModel):
+    accuracy: float = Field(ge=0, le=1, allow_inf_nan=False)
+    grade: float = Field(ge=0, le=3, allow_inf_nan=False)
+
+
+class SettingsValues(BaseModel):
+    approval_limit: float = Field(gt=0, le=1_000_000, allow_inf_nan=False)
+    objectives: Objectives
+    noise: Thresholds
+    tolerance: Thresholds
+    spending_limit: float = Field(gt=0, le=1000, allow_inf_nan=False)
+    agents_at_once: int = Field(ge=1, le=25)
+
+
+class SettingChange(BaseModel):
+    key: str
+    changed_by: str | None
+    changed_at: str
+
+
+class AllowedModel(BaseModel):
+    model: str
+    reasoning_efforts: list[str]
+    input_price: float
+    output_price: float
+
+
+class SettingsView(BaseModel):
+    values: SettingsValues
+    changes: list[SettingChange]
+    models: list[AllowedModel]

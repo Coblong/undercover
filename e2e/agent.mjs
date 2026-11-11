@@ -52,11 +52,7 @@ createServer(async (request, response) => {
   } else if (request.method === "POST" && url.pathname === "/dispatches") {
     const { concurrency } = await readBody(request);
     started.push({ kind: "dispatch", concurrency });
-    await startRun(
-      "/api/runs/dispatch",
-      { concurrency, model: "stand-in", reasoning_effort: "none" },
-      response,
-    );
+    await startRun("/api/runs/dispatch", { concurrency }, response);
   } else if (request.method === "POST" && url.pathname === "/evaluations") {
     const { concurrency, eval_set: evalSet, tiny } = await readBody(request);
     started.push({ kind: "evaluation", concurrency, eval_set: evalSet, tiny });
@@ -66,8 +62,6 @@ createServer(async (request, response) => {
         concurrency,
         eval_set: evalSet,
         tiny,
-        model: "stand-in",
-        reasoning_effort: "none",
       },
       response,
     );

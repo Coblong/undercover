@@ -11,7 +11,6 @@ import threading
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from datetime import UTC, datetime
-from functools import cache
 from pathlib import Path
 from typing import Any
 
@@ -49,12 +48,6 @@ def now() -> str:
 def load(name: str) -> Any:
     """Read one JSON file from data/."""
     return json.loads((DATA / name).read_text())
-
-
-@cache
-def payout_limit() -> float:
-    """Return the payout a handler must sign off above."""
-    return float(load("company.json")["payout_approval_limit"])
 
 
 def database_url() -> str:
@@ -231,3 +224,7 @@ def seed(conn: Connection) -> None:
             for h in load("handlers.json")
         ],
     )
+    from backend import configurations, settings_store  # noqa: PLC0415
+
+    configurations.seed(conn)
+    settings_store.seed(conn)

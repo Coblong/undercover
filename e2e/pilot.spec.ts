@@ -131,14 +131,3 @@ test("the steps the agent took are shown in order", async ({
     "SaidI need the policy next.",
   ]);
 });
-
-test("the agent's instructions can be read but not changed", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page.getByRole("button", { name: "Instructions" }).click();
-  const instructions = page.getByRole("region", { name: "Agent instructions" });
-  await expect(instructions).toContainText("You are the UnderCover Agent");
-  await expect(page.getByRole("textbox")).toHaveCount(0);
-  await expect(instructions.getByRole("button")).toHaveCount(0);
-});

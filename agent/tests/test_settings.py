@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_a_missing_key_is_one_clear_error(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     with pytest.raises(AgentError, match="OPENROUTER_API_KEY is not set"):
-        main.model()
+        main.model("m", "low")
 
 
 def test_a_real_environment_variable_beats_the_env_file(

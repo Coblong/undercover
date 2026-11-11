@@ -219,24 +219,16 @@ def start_run(
 @app.post("/dispatches", status_code=202)
 def start_dispatch(body: DispatchRequest, work: Worker) -> Started:
     """Start a dispatch with this many claim agents at once and say its id."""
-    model, effort = main.model_choice()
-    run = {
-        "concurrency": body.concurrency,
-        "model": model,
-        "reasoning_effort": effort,
-    }
+    run = {"concurrency": body.concurrency}
     return start_run("/api/runs/dispatch", run, body.concurrency, work)
 
 
 @app.post("/evaluations", status_code=202)
 def start_evaluation(body: EvaluationRequest, work: Worker) -> Started:
     """Start an evaluation of a labelled set and say its id."""
-    model, effort = main.model_choice()
     run = {
         "concurrency": body.concurrency,
         "eval_set": body.eval_set,
         "tiny": body.tiny,
-        "model": model,
-        "reasoning_effort": effort,
     }
     return start_run("/api/runs/evaluation", run, body.concurrency, work)

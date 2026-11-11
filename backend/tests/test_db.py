@@ -57,6 +57,7 @@ def test_the_database_refuses_what_makes_no_sense(client: TestClient):
                 concurrency=5,
                 model="m",
                 reasoning_effort="low",
+                config_version=1,
                 state="running",
                 started_at="now",
             ),

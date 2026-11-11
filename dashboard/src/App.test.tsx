@@ -9,8 +9,10 @@ import {
   evaluationCopy,
   finishedEvaluation,
   finishedEvaluationRow,
+  settingsView,
   stubApi,
   summaries,
+  versionOne,
 } from "./fixtures";
 
 vi.mock("./supabase", () => ({
@@ -80,21 +82,40 @@ it("says so when the queue cannot be loaded", async () => {
   ).toBe("Could not load the claims.");
 });
 
-it("switches to the instructions and back", async () => {
+it("switches to the configuration and back", async () => {
   stubApi({
     ...me,
     "/api/claims": summaries,
     "/api/dispatches/latest": null,
-    "/api/instructions/claim": { text: "Decide from the wording." },
+    "/api/configurations": [versionOne],
   });
   render(<App />);
   await userEvent.click(
-    await screen.findByRole("button", { name: "Instructions" }),
+    await screen.findByRole("button", { name: "Configuration" }),
   );
-  expect(await screen.findByText("Decide from the wording.")).toBeDefined();
+  expect(await screen.findByText("This is the first version.")).toBeDefined();
   expect(screen.queryByRole("button", { name: /CLM-1001/ })).toBeNull();
+  expect(
+    screen
+      .getByRole("button", { name: "Configuration" })
+      .getAttribute("aria-current"),
+  ).toBe("page");
   await userEvent.click(screen.getByRole("button", { name: "Claims" }));
   expect(await screen.findByRole("button", { name: /CLM-1001/ })).toBeDefined();
+});
+
+it("shows the settings page", async () => {
+  stubApi({
+    ...me,
+    "/api/claims": summaries,
+    "/api/dispatches/latest": null,
+    "/api/settings": settingsView,
+  });
+  render(<App />);
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Settings" }),
+  );
+  expect(await screen.findByRole("form", { name: "Settings" })).toBeDefined();
 });
 
 it("keeps the queue up to date", async () => {

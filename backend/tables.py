@@ -84,6 +84,7 @@ decisions = Table(
     Column("explanation", Text, nullable=False),
     Column("policy_section", Text, nullable=False),
     Column("decided_at", Text, nullable=False),
+    Column("approval_limit", Float, nullable=False),
 )
 payments = Table(
     "payments",
@@ -101,6 +102,52 @@ sign_offs = Table(
     Column("handler_id", Text, ForeignKey("handlers.handler_id"), nullable=False),
     Column("signed_off_at", Text, nullable=False),
 )
+configurations = Table(
+    "configurations",
+    metadata,
+    Column("version", Integer, primary_key=True, autoincrement=False),
+    Column("instructions", Text, nullable=False),
+    Column("model", Text, nullable=False),
+    Column("reasoning_effort", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("proposed_by", Text, nullable=False),
+    Column("approved_by", Text, ForeignKey("handlers.handler_id")),
+    Column("approved_at", Text),
+    Column("created_at", Text, nullable=False),
+)
+current_configuration = Table(
+    "current_configuration",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=False),
+    Column("version", Integer, ForeignKey("configurations.version"), nullable=False),
+)
+recipes = Table(
+    "recipes",
+    metadata,
+    Column("version", Integer, primary_key=True, autoincrement=False),
+    Column("recipe", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    Column("proposed_by", Text, nullable=False),
+    Column("approved_by", Text, ForeignKey("handlers.handler_id")),
+    Column("approved_at", Text),
+    Column("created_at", Text, nullable=False),
+)
+settings = Table(
+    "settings",
+    metadata,
+    Column("key", Text, primary_key=True),
+    Column("value", JSON, nullable=False),
+)
+setting_changes = Table(
+    "setting_changes",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("key", Text, nullable=False),
+    Column("value", JSON, nullable=False),
+    Column("changed_by", Text, ForeignKey("handlers.handler_id")),
+    Column("changed_at", Text, nullable=False),
+    sqlite_autoincrement=True,
+)
 runs = Table(
     "runs",
     metadata,
@@ -109,6 +156,9 @@ runs = Table(
     Column("concurrency", Integer, nullable=False),
     Column("model", Text, nullable=False),
     Column("reasoning_effort", Text, nullable=False),
+    Column(
+        "config_version", Integer, ForeignKey("configurations.version"), nullable=False
+    ),
     Column("state", Text, nullable=False),
     Column("eval_set", Text),
     Column("tiny", Boolean),

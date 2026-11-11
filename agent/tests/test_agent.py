@@ -352,11 +352,12 @@ def test_a_claim_that_fails_goes_back_to_waiting_and_starts_afresh(
 def test_instructions_come_from_the_backend(client: TestClient):
     model = RecordingModel(messages=iter([calls(decision("decline", 0))]))
     main.run("CLM-1002", "t", model)
-    assert model.seen[0][0] == client.get("/api/instructions/claim").json()["text"]
+    current = client.get("/api/configuration/current").json()
+    assert model.seen[0][0] == current["instructions"]
 
 
 def test_the_instructions_do_not_tell_the_agent_to_pay(client: TestClient):
-    text = client.get("/api/instructions/claim").json()["text"]
+    text = client.get("/api/configuration/current").json()["instructions"]
     assert "pay_claim" not in text
     assert "calculate_payout" in text
 
@@ -403,14 +404,10 @@ def test_long_results_are_clipped_in_the_steps(client: TestClient):
 
 def test_model_name(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
-    monkeypatch.delenv("MODEL_NAME", raising=False)
-    assert main.model().model_name == "openai/gpt-6-luna"
-    assert main.model().reasoning_effort == "low"
-    assert main.model_choice() == ("openai/gpt-6-luna", "low")
-    monkeypatch.setenv("MODEL_NAME", "openrouter/free")
-    assert main.model().model_name == "openrouter/free"
-    assert main.model().reasoning_effort is None
-    assert main.model_choice() == ("openrouter/free", "none")
+    luna = main.model("openai/gpt-6-luna", "low")
+    assert (luna.model_name, luna.reasoning_effort) == ("openai/gpt-6-luna", "low")
+    free = main.model("openrouter/free", "default")
+    assert (free.model_name, free.reasoning_effort) == ("openrouter/free", None)
 
 
 def test_agent_reaches_data_only_through_the_api():

@@ -5,9 +5,9 @@ from typing import cast
 from fastapi import HTTPException
 from sqlalchemy import Connection, insert, select, update
 
-from backend import attempts, documents, queries
+from backend import attempts, documents, queries, settings_store
 from backend import tables as t
-from backend.db import now, payout_limit, transaction
+from backend.db import now, transaction
 from backend.models import (
     DecisionRequest,
     Handler,
@@ -72,8 +72,9 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
             )
         ).one()
         check_decision(body, payout, claimed)
+        limit = settings_store.approval_limit(conn)
         settled = attempts.settled_state(
-            body.decision, payout, copy=evaluation_id is not None
+            body.decision, payout, limit, copy=evaluation_id is not None
         )
         new_state: State = "in_progress" if state == "in_progress" else settled
         conn.execute(
@@ -84,6 +85,7 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
                 explanation=body.explanation,
                 policy_section=body.policy_section,
                 decided_at=now(),
+                approval_limit=limit,
             )
         )
         conn.execute(
@@ -94,7 +96,7 @@ def decide(conn: Connection, claim_id: str, body: DecisionRequest) -> Outcome:
     message = f"Decision recorded: {body.decision}."
     if settled == "waiting_for_sign_off":
         message += (
-            f" The payout is over {money(payout_limit())}, so payment waits"
+            f" The payout is over {money(limit)}, so payment waits"
             " until a handler signs off."
         )
     elif body.decision == "approve":
@@ -134,10 +136,11 @@ def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
                 f"The approved payout is {money(claim.decision.payout)}."
                 " Pay exactly that amount",
             )
-        if amount > payout_limit() and claim.sign_off is None:
+        limit = claim.decision.approval_limit
+        if amount > limit and claim.sign_off is None:
             raise HTTPException(
                 409,
-                f"Payment blocked: {money(amount)} is over the {money(payout_limit())}"
+                f"Payment blocked: {money(amount)} is over the {money(limit)}"
                 " limit and a handler has not signed off",
             )
         conn.execute(
