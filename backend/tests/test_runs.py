@@ -171,10 +171,10 @@ def test_a_failed_attempt_goes_back_to_waiting_and_two_leave_the_claim(
 
 def test_starting_the_service_stops_every_run_that_is_going(client: TestClient):
     run_id = create(client)["run_id"]
-    assert client.post("/api/runs/stop").json() == {"stopped": 1}
+    assert client.post("/api/runs/stop").json() == {"stopped": 1, "stopped_rounds": 0}
     assert latest(client)["state"] == "stopped"
     assert latest(client)["run_id"] == run_id
-    assert client.post("/api/runs/stop").json() == {"stopped": 0}
+    assert client.post("/api/runs/stop").json() == {"stopped": 0, "stopped_rounds": 0}
     assert create(client)["run_id"] == run_id + 1
 
 

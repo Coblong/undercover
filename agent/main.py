@@ -487,7 +487,7 @@ def run(
     )
     graph = nodes.compile(checkpointer or InMemorySaver())
     config = {
-        **tracing.config_for(thread_id, run_id),
+        **tracing.config_for(thread_id, run_id, configuration.get("round_id")),
         "recursion_limit": RECURSION_LIMIT,
     }
     started = clock()

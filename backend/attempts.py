@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import HTTPException
 from sqlalchemy import Connection, delete, func, insert, select, update
 
-from backend import queries, runs
+from backend import queries, rounds, runs
 from backend import tables as t
 from backend.db import now, transaction
 from backend.models import Outcome, StartedClaim, State, Step, StepRequest
@@ -103,6 +103,7 @@ def start_claim(conn: Connection, run_id: int, claim_id: str) -> StartedClaim:
     """
     with transaction(conn):
         runs.running_run(conn, run_id, lock=True)
+        rounds.check_can_start(conn, run_id)
         state = queries.claim_state(conn, claim_id, lock=True)
         member = conn.execute(
             update(t.run_claims)

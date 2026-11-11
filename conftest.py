@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from agent import main
+from agent import improver_client, main
 from backend import agent_service, db
 from backend.main import app
 from backend.tests import signing
@@ -48,6 +48,7 @@ class InProcessClient(TestClient):
 def in_process_backend(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     """Make the agent reach the backend in this process, without a server."""
     monkeypatch.setattr(main, "backend", lambda timeout=30: InProcessClient(app))
+    monkeypatch.setattr(improver_client, "backend", lambda: InProcessClient(app))
 
 
 class Agents:
@@ -61,6 +62,12 @@ class Agents:
 
     def dispatch(self, starter: agent_service.DispatchStarter) -> None:
         app.dependency_overrides[agent_service.dispatch_starter] = lambda: starter
+
+    def round_start(self, starter: agent_service.RoundStarter) -> None:
+        app.dependency_overrides[agent_service.round_starter] = lambda: starter
+
+    def round_resume(self, resumer: agent_service.Resumer) -> None:
+        app.dependency_overrides[agent_service.round_resumer] = lambda: resumer
 
 
 @pytest.fixture

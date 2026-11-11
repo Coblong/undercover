@@ -6,7 +6,7 @@ from contextlib import closing
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import Connection
 
-from backend import attempts, auth, evaluations, queries, runs, work
+from backend import attempts, auth, evaluations, queries, rounds, runs, work
 from backend.db import connect
 from backend.deps import ClaimAgent, DispatchStarter, EvaluationStarter, with_db
 from backend.models import (
@@ -94,6 +94,8 @@ def get_evaluation(run_id: int, conn: Connection) -> EvaluationDetail:
 @with_db
 def create_evaluation(body: CreateEvaluationRequest, conn: Connection) -> Evaluation:
     """Create an evaluation with copies of its claims, unless a run is going."""
+    if body.round_id is not None:
+        rounds.open_round(conn, body.round_id)
     return evaluations.create(conn, body)
 
 
@@ -115,7 +117,8 @@ def get_latest_dispatch(conn: Connection) -> Dispatch | None:
 @with_db
 def stop_runs(conn: Connection) -> StoppedRuns:
     """Mark every dispatch and evaluation still running as stopped."""
-    return runs.stop_all(conn)
+    stopped = runs.stop_all(conn)
+    return StoppedRuns(stopped=stopped.stopped, stopped_rounds=rounds.stop_stale(conn))
 
 
 @router.post("/api/runs/{run_id}/plan", operation_id="plan_run")
@@ -130,7 +133,7 @@ def plan_run(run_id: int, conn: Connection) -> RunClaims:
 def end_run(run_id: int, body: EndRunRequest, conn: Connection) -> Dispatch:
     """End a dispatch or an evaluation that is running."""
     ended = runs.end(conn, run_id, body.state)
-    if body.state == "finished" and runs.get_run(conn, run_id)["kind"] == "evaluation":
+    if ended.state == "finished" and runs.get_run(conn, run_id)["kind"] == "evaluation":
         evaluations.grade_run(conn, run_id)
     return ended
 

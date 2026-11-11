@@ -5,6 +5,7 @@ This is the one place that reads the handlers' decisions and the held-out claims
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import Connection, func, insert, select
@@ -48,12 +49,102 @@ def sources(conn: Connection, body: CreateEvaluationRequest):
     return conn.execute(query).mappings().all()
 
 
+def under_test(conn: Connection, round_id: int | None) -> int:
+    """Return the version an evaluation works: a round's tried one, or the current."""
+    if round_id is not None:
+        tried = conn.execute(
+            select(t.rounds.c.tried_version).where(t.rounds.c.id == round_id)
+        ).scalar_one_or_none()
+        if tried is not None:
+            return tried
+    return configurations.current_version(conn)
+
+
+def set_size(conn: Connection, eval_set: str) -> int:
+    """Return how many claims a whole labelled set holds."""
+    return conn.execute(
+        select(func.count()).where(t.answer_key.c.eval_set == eval_set)
+    ).scalar_one()
+
+
+def labelled_claims(conn: Connection, run_id: int) -> list[dict[str, Any]]:
+    """Return each claim of an evaluation with the agent's answer beside the handler's.
+
+    This is what the improver reads about the evaluation set: the handler's
+    reason and reference, the agent's explanation, and the judge's grade.
+    """
+    run = get_run(conn, run_id)
+    rows = conn.execute(
+        select(
+            t.run_claims.c.source_id,
+            t.claims.c.summary,
+            t.answer_key.c.decision.label("handler_decision"),
+            t.answer_key.c.payout.label("handler_payout"),
+            t.answer_key.c.reason.label("handler_reason"),
+            t.answer_key.c.reference,
+            t.decisions.c.decision.label("agent_decision"),
+            t.decisions.c.payout.label("agent_payout"),
+            t.decisions.c.explanation,
+            t.decisions.c.policy_section,
+            t.evaluation_grades.c.grade,
+            t.evaluation_grades.c.letter,
+            t.evaluation_grades.c.same_grounds,
+            t.evaluation_grades.c.same_section,
+        )
+        .select_from(t.run_claims)
+        .join(t.claims, t.claims.c.claim_id == t.run_claims.c.claim_id)
+        .join(
+            t.answer_key,
+            (t.answer_key.c.claim_id == t.run_claims.c.source_id)
+            & (t.answer_key.c.eval_set == run["eval_set"]),
+        )
+        .outerjoin(t.decisions, t.decisions.c.claim_id == t.run_claims.c.claim_id)
+        .outerjoin(
+            t.evaluation_grades,
+            (t.evaluation_grades.c.run_id == run_id)
+            & (t.evaluation_grades.c.claim_id == t.run_claims.c.claim_id),
+        )
+        .where(t.run_claims.c.run_id == run_id)
+        .order_by(t.run_claims.c.position)
+    ).mappings()
+    labelled = []
+    for row in rows:
+        answer = scoring.Answer(row["agent_decision"], row["agent_payout"])
+        handler = (row["handler_decision"], row["handler_payout"])
+        labelled.append(
+            {
+                "claim_id": row["source_id"],
+                "summary": row["summary"],
+                "right": scoring.is_right(answer, *handler),
+                "handler": {
+                    "decision": row["handler_decision"],
+                    "payout": row["handler_payout"],
+                    "reason": row["handler_reason"],
+                    "reference": row["reference"],
+                },
+                "agent": {
+                    "decision": row["agent_decision"],
+                    "payout": row["agent_payout"],
+                    "reason": row["explanation"],
+                    "section": row["policy_section"],
+                },
+                "judge": {
+                    "grade": row["grade"],
+                    "letter": row["letter"],
+                    "same_grounds": row["same_grounds"],
+                    "same_section": row["same_section"],
+                },
+            }
+        )
+    return labelled
+
+
 def create(conn: Connection, body: CreateEvaluationRequest) -> Evaluation:
     """Create an evaluation with its own copies of the claims, unless a run is going."""
     with transaction(conn):
         if conn.execute(select(t.runs.c.id).where(t.runs.c.state == "running")).first():
             raise HTTPException(409, "A dispatch or an evaluation is already running")
-        version = configurations.get_row(conn, configurations.current_version(conn))
+        version = configurations.get_row(conn, under_test(conn, body.round_id))
         run_id = conn.execute(
             insert(t.runs)
             .values(
@@ -62,6 +153,7 @@ def create(conn: Connection, body: CreateEvaluationRequest) -> Evaluation:
                 model=version["model"],
                 reasoning_effort=version["reasoning_effort"],
                 config_version=version["version"],
+                round_id=body.round_id,
                 state="running",
                 eval_set=body.eval_set,
                 tiny=body.tiny,

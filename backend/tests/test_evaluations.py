@@ -20,6 +20,7 @@ def create(
         "concurrency": 5,
         "eval_set": eval_set,
         "tiny": tiny,
+        "round_id": None,
         **changes,
     }
     response = client.post("/api/runs/evaluation", json=body)
@@ -133,8 +134,7 @@ def test_one_run_at_a_time_includes_evaluations(client: TestClient):
             "concurrency": 1,
             "eval_set": "held_out",
             "tiny": True,
-            "model": "m",
-            "reasoning_effort": "low",
+            "round_id": None,
         },
     )
     assert again.status_code == 409

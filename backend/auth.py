@@ -86,6 +86,25 @@ def handler_for(conn: Connection, email: str) -> Handler:
     return Handler.model_validate(dict(row))
 
 
+def handler_by_id(conn: Connection, handler_id: str) -> Handler:
+    """Return the handler with this id, or raise a 404."""
+    row = (
+        conn.execute(
+            select(
+                t.handlers.c.handler_id,
+                t.handlers.c.name,
+                t.handlers.c.role,
+                t.handlers.c.can_approve_over_limit,
+            ).where(t.handlers.c.handler_id == handler_id)
+        )
+        .mappings()
+        .first()
+    )
+    if row is None:
+        raise HTTPException(404, f"Handler {handler_id} not found")
+    return Handler.model_validate(dict(row))
+
+
 def senior_handler_for(conn: Connection, email: str, action: str) -> Handler:
     """Return the handler, who must be able to sign off payouts over the limit."""
     handler = handler_for(conn, email)

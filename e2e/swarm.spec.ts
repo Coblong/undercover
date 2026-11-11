@@ -173,6 +173,7 @@ test("an evaluation played out through the API is scored on the scoreboard and l
       concurrency: 5,
       eval_set: "held_out",
       tiny: true,
+      round_id: null,
     },
   });
   const { run_id: runId } = (await created.json()) as { run_id: number };

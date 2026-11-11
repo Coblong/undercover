@@ -207,7 +207,7 @@ Builds the rounds, the rule, the spending limit and the improver. This is the la
 
 Success criteria:
 
-- [ ] `uv run pytest backend` passes, with tests that work out the rule by hand:
+- [x] `uv run pytest backend` passes, with tests that work out the rule by hand:
   - a version kept: accuracy 0.50 to 0.68 (above the 0.1 noise), nothing worse than its tolerance, the objectives met;
   - a version rolled back for each reason: missed an objective, a measure worse than its tolerance, nothing better than its noise, and no grade;
   - cost and time compared as fractions of the old value, accuracy and the grade as differences, with a cost at exactly the tolerance;
@@ -218,7 +218,7 @@ Success criteria:
   - a stopped round leaving the current version as it was, a round stopped after its verdict keeping it, and the backend refusing anything a stopped round records;
   - an evaluation refused over the limit, one cut short showing as `stopped`, a version whose evaluation was stopped rolled back, and the estimate for a model with no runs scaled by the larger price ratio;
   - one open round at a time, and a version recorded with its proposer, approver and time.
-- [ ] `uv run pytest agent` passes, with the stub model and an in-memory checkpointer, with tests that:
+- [x] `uv run pytest agent` passes, with the stub model and an in-memory checkpointer, with tests that:
   - a proposal changes nothing until it is approved, then makes a version with the handler's name and the round;
   - a rejection's reason reaches the improver, which may propose again;
   - a proposal outside the models allowed goes back to the improver and never reaches a handler (the round's pending proposal stays empty);
@@ -226,10 +226,18 @@ Success criteria:
   - the improver's evaluations are not refused for the round's own stretch, and a stopped round starts no more claims or model calls;
   - a round waiting for a handler lets a dispatch run, and survives a service restart (a new service on the same checkpointer resumes it);
   - a service start marks a mid-work round stopped and leaves a waiting one open;
-  - the improver's client has no way to the claim agent's routes, and the claim agent's client has none to the improver's;
+  - the improver's client has no way to a claim's own routes, and the claim agent's client has none to the improver's (a test reads both for the paths they call);
   - the improver runs with parallel tool calls off, its model calls are capped, and its Langfuse session is `round-<id>`.
-- [ ] `npm run check:python` passes with 80% coverage.
-- [ ] I run a round on the stub model against a throwaway SQLite backend and the in-memory checkpointer with `uv run`, and report the stages it went through.
+- [x] `npm run check:python` passes with 80% coverage.
+- [x] A round on the stub model against a throwaway SQLite backend and the in-memory checkpointer goes through `first_evaluations` (1, 2, 3 of 3), `improver_working`, `change_waiting`, `evaluating` (1, 2, 3 of 3), `verdict`, `recipe_waiting` and `finished` (`agent/tests/test_improver.py`).
+
+
+Notes on what differs from the plan as written:
+
+- The proposal, the stage and the decision are recorded by the service through the improver's client, as `/api/improvement/rounds/...`. The handler-facing routes are `/api/rounds/...`.
+- The claim agent's run configuration now also says which round its run belongs to (`round_id`, no scores), so a round's claims are tagged `round-<id>` in Langfuse without passing a new argument through the claim agent.
+- The guard sits after the approval middleware in the list, which a prototype showed makes it run first on a reply.
+- `parallel_tool_calls=False` is set in `model_kwargs`: `ChatOpenAI` has no field of that name.
 
 ## Phase 5: The Improvement page
 

@@ -107,10 +107,31 @@ def claims_of(conn: Connection, run_id: int) -> list[str]:
     return [row.claim_id for row in rows]
 
 
+def unstarted_copies(conn: Connection, run_id: int) -> int:
+    """Count the claims of a run that no attempt ever started."""
+    return conn.execute(
+        select(func.count())
+        .select_from(t.run_claims)
+        .join(t.claims, t.claims.c.claim_id == t.run_claims.c.claim_id)
+        .where(
+            t.run_claims.c.run_id == run_id,
+            t.claims.c.state == "waiting",
+            ~select(t.attempts.c.id)
+            .where(t.attempts.c.claim_id == t.claims.c.claim_id)
+            .exists(),
+        )
+    ).scalar_one()
+
+
 def end(conn: Connection, run_id: int, state: str) -> Dispatch:
-    """End a run that is going."""
+    """End a run that is going.
+
+    A round's evaluation that was cut short, with claims never started, is stopped.
+    """
     with transaction(conn):
-        running_run(conn, run_id, lock=True)
+        run = running_run(conn, run_id, lock=True)
+        if run["round_id"] is not None and unstarted_copies(conn, run_id):
+            state = "stopped"
         conn.execute(
             update(t.runs)
             .where(t.runs.c.id == run_id)
@@ -127,7 +148,7 @@ def stop_all(conn: Connection) -> StoppedRuns:
             .where(t.runs.c.state == "running")
             .values(state="stopped", ended_at=now())
         )
-    return StoppedRuns(stopped=result.rowcount)
+    return StoppedRuns(stopped=result.rowcount, stopped_rounds=0)
 
 
 def summarize(claims: list[DispatchClaim]) -> DispatchSummary:

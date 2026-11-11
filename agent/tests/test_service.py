@@ -223,7 +223,7 @@ def test_starting_the_service_stops_a_run_that_was_going(client: TestClient):
             assert client.get("/api/dispatches/latest").json()["run_id"] == 2
     finally:
         service.app.state.checkpointer = None
-    assert client.post("/api/runs/stop").json() == {"stopped": 0}
+    assert client.post("/api/runs/stop").json() == {"stopped": 0, "stopped_rounds": 0}
 
 
 def test_the_service_waits_for_the_backend_to_come_up(

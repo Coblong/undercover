@@ -9,7 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
-from backend import api_claims, api_runs
+from backend import api_claims, api_rounds, api_runs
 from backend.db import init_db
 
 
@@ -49,3 +49,4 @@ def conflict(_: Request, exc: IntegrityError) -> JSONResponse:
 
 app.include_router(api_claims.router)
 app.include_router(api_runs.router)
+app.include_router(api_rounds.router)

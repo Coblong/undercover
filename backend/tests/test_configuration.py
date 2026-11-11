@@ -92,7 +92,13 @@ def test_the_diff_of_two_small_texts():
 
 def test_the_claim_agents_version_holds_no_scores(client: TestClient):
     current = client.get("/api/configuration/current").json()
-    assert set(current) == {"version", "instructions", "model", "reasoning_effort"}
+    assert set(current) == {
+        "version",
+        "instructions",
+        "model",
+        "reasoning_effort",
+        "round_id",
+    }
     run = client.post("/api/runs/dispatch", json={"concurrency": 2}).json()
     by_run = client.get(f"/api/runs/{run['run_id']}/configuration").json()
     assert by_run == current
@@ -123,7 +129,12 @@ def test_a_dispatch_and_an_evaluation_record_the_current_version(client: TestCli
     client.post("/api/runs/stop")
     evaluation = client.post(
         "/api/runs/evaluation",
-        json={"concurrency": 2, "eval_set": "evaluation", "tiny": True},
+        json={
+            "concurrency": 2,
+            "eval_set": "evaluation",
+            "tiny": True,
+            "round_id": None,
+        },
     ).json()
     assert evaluation["config_version"] == 2
     served = client.get(f"/api/runs/{evaluation['run_id']}/configuration").json()
@@ -176,3 +187,20 @@ def test_the_approval_limit_comes_from_the_settings(client: TestClient):
     blocked = client.post("/api/claims/CLM-1003/payment", json={"amount": 800})
     assert blocked.status_code == 409
     assert "$800.00 is over the $500.00 limit" in blocked.json()["detail"]
+
+
+def test_the_recipes_are_listed_newest_first_with_a_diff(client: TestClient):
+    recipes = client.get("/api/recipes").json()
+    assert [r["version"] for r in recipes] == [1]
+    assert recipes[0]["current"] is True
+    assert recipes[0]["diff"] == []
+    sql(
+        "INSERT INTO recipes (version, recipe, reason, proposed_by, approved_by,"
+        " approved_at, created_at) VALUES (2, '1. Read.\n2. Propose.', 'Shorter.',"
+        " 'Improver, round 1', 'HND-01', 'then', 'then')"
+    )
+    recipes = client.get("/api/recipes").json()
+    assert [(r["version"], r["current"]) for r in recipes] == [(2, True), (1, False)]
+    assert recipes[0]["approved_by"] == "Dana Whitfield"
+    kinds = {line["kind"] for line in recipes[0]["diff"]}
+    assert kinds == {"add", "remove", "context"} or {"add", "remove"} <= kinds

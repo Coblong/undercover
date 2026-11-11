@@ -1,6 +1,6 @@
 """The backend's one place that talks to the agent's service."""
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 import httpx
 from fastapi import HTTPException
@@ -49,7 +49,7 @@ def claim_agent() -> ClaimAgent:
     return call_service
 
 
-def start(path: str, body: dict[str, object]) -> int:
+def start(path: str, body: Mapping[str, object]) -> int:
     """Ask the service to start a run and return the id it created.
 
     A service that is not running is a 503, and a refusal, such as a run already
@@ -90,3 +90,31 @@ def start_evaluation(concurrency: int, eval_set: str, tiny: bool) -> int:
 def evaluation_starter() -> EvaluationStarter:
     """Return the function that starts an evaluation. Tests replace it."""
     return start_evaluation
+
+
+RoundStarter = Callable[[str, str], int]
+Resumer = Callable[[int, str, str, str | None], None]
+
+
+def start_round(handler_id: str, handler_name: str) -> int:
+    """Ask the service to start a round of improvement for a handler."""
+    body = {"handler_id": handler_id, "handler_name": handler_name}
+    return start("/rounds", body)
+
+
+def round_starter() -> RoundStarter:
+    """Return the function that starts a round. Tests replace it."""
+    return start_round
+
+
+def resume_round(
+    round_id: int, outcome: str, handler_id: str, reason: str | None
+) -> None:
+    """Ask the service to record a handler's decision and carry the improver on."""
+    body = {"outcome": outcome, "handler_id": handler_id, "reason": reason}
+    start(f"/rounds/{round_id}/decision", body)
+
+
+def round_resumer() -> Resumer:
+    """Return the function that carries a round on. Tests replace it."""
+    return resume_round

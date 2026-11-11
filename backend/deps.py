@@ -20,6 +20,12 @@ EvaluationStarter = Annotated[
 ]
 
 
+RoundStarter = Annotated[
+    agent_service.RoundStarter, Depends(agent_service.round_starter)
+]
+RoundResumer = Annotated[agent_service.Resumer, Depends(agent_service.round_resumer)]
+
+
 def with_db[**P, R](route: Callable[P, R]) -> Callable[..., R]:
     """Give a route its `conn` in the route's own thread, and take it back there.
 

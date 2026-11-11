@@ -28,6 +28,7 @@ from backend.models import (
     Outcome,
     PaymentRequest,
     Policy,
+    RecipeVersion,
     RunConfiguration,
     Section,
     SectionRef,
@@ -182,6 +183,13 @@ def list_configurations(conn: Connection) -> list[ConfigurationVersion]:
     return configurations.list_versions(conn)
 
 
+@router.get("/api/recipes", operation_id="list_recipes")
+@with_db
+def list_recipes(conn: Connection) -> list[RecipeVersion]:
+    """List every version of the improver's recipe, newest first."""
+    return configurations.list_recipes(conn)
+
+
 @router.get("/api/configuration/current", operation_id="get_current_configuration")
 @with_db
 def get_current_configuration(conn: Connection) -> RunConfiguration:
@@ -193,9 +201,8 @@ def get_current_configuration(conn: Connection) -> RunConfiguration:
 @with_db
 def get_run_configuration(run_id: int, conn: Connection) -> RunConfiguration:
     """Get the version of the claim agent's configuration a run used, with no scores."""
-    return configurations.run_configuration(
-        conn, configurations.run_version(conn, run_id)
-    )
+    version, round_id = configurations.run_version(conn, run_id)
+    return configurations.run_configuration(conn, version, round_id)
 
 
 @router.get("/api/settings", operation_id="get_settings")

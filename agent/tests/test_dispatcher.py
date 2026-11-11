@@ -304,8 +304,7 @@ def new_evaluation(client: TestClient, eval_set: str = "evaluation") -> int:
         "concurrency": 5,
         "eval_set": eval_set,
         "tiny": True,
-        "model": "openai/gpt-6-luna",
-        "reasoning_effort": "low",
+        "round_id": None,
     }
     return client.post("/api/runs/evaluation", json=body).json()["run_id"]
 

@@ -113,6 +113,7 @@ configurations = Table(
     Column("reasoning_effort", Text, nullable=False),
     Column("reason", Text, nullable=False),
     Column("proposed_by", Text, nullable=False),
+    Column("round_id", Integer),
     Column("approved_by", Text, ForeignKey("handlers.handler_id")),
     Column("approved_at", Text),
     Column("created_at", Text, nullable=False),
@@ -130,6 +131,7 @@ recipes = Table(
     Column("recipe", Text, nullable=False),
     Column("reason", Text, nullable=False),
     Column("proposed_by", Text, nullable=False),
+    Column("round_id", Integer),
     Column("approved_by", Text, ForeignKey("handlers.handler_id")),
     Column("approved_at", Text),
     Column("created_at", Text, nullable=False),
@@ -150,6 +152,54 @@ setting_changes = Table(
     Column("changed_at", Text, nullable=False),
     sqlite_autoincrement=True,
 )
+rounds = Table(
+    "rounds",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("state", Text, nullable=False),
+    Column("stage", Text, nullable=False),
+    Column("done", Integer, nullable=False),
+    Column("of", Integer, nullable=False),
+    Column("settings", JSON, nullable=False),
+    Column("recipe_version", Integer, ForeignKey("recipes.version"), nullable=False),
+    Column("thread_id", Text, nullable=False),
+    Column("started_by", Text, ForeignKey("handlers.handler_id"), nullable=False),
+    Column("started_at", Text, nullable=False),
+    Column("ended_at", Text),
+    Column("stopped_by", Text, ForeignKey("handlers.handler_id")),
+    Column("tried_version", Integer, ForeignKey("configurations.version")),
+    Column("reason", Text),
+    Column("pending", JSON),
+    Column("verdict", Text),
+    Column("why", Text),
+    Column("held_out_before", JSON),
+    Column("held_out_after", JSON),
+    sqlite_autoincrement=True,
+)
+round_decisions = Table(
+    "round_decisions",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("round_id", Integer, ForeignKey("rounds.id"), nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("outcome", Text, nullable=False),
+    Column("handler_id", Text, ForeignKey("handlers.handler_id"), nullable=False),
+    Column("reason", Text),
+    Column("version", Integer),
+    Column("decided_at", Text, nullable=False),
+    sqlite_autoincrement=True,
+)
+round_calls = Table(
+    "round_calls",
+    metadata,
+    Column("id", Integer, primary_key=True),
+    Column("round_id", Integer, ForeignKey("rounds.id"), nullable=False),
+    Column("input_tokens", Integer, nullable=False),
+    Column("output_tokens", Integer, nullable=False),
+    Column("cost", Float, nullable=False),
+    Column("created_at", Text, nullable=False),
+    sqlite_autoincrement=True,
+)
 runs = Table(
     "runs",
     metadata,
@@ -161,6 +211,7 @@ runs = Table(
     Column(
         "config_version", Integer, ForeignKey("configurations.version"), nullable=False
     ),
+    Column("round_id", Integer, ForeignKey("rounds.id")),
     Column("state", Text, nullable=False),
     Column("eval_set", Text),
     Column("tiny", Boolean),
@@ -234,6 +285,15 @@ work_times = Table(
     sqlite_autoincrement=True,
 )
 
+Index("round_calls_by_round", round_calls.c.round_id)
+Index("runs_by_round", runs.c.round_id)
+Index(
+    "one_open_round",
+    rounds.c.state,
+    unique=True,
+    sqlite_where=rounds.c.state == "open",
+    postgresql_where=rounds.c.state == "open",
+)
 Index("model_calls_by_claim", model_calls.c.claim_id)
 Index("model_calls_by_run", model_calls.c.run_id)
 Index("work_times_by_claim", work_times.c.claim_id)

@@ -14,7 +14,12 @@ from agent import settings as agent_settings
 from backend import instructions, settings_store
 from backend import tables as t
 from backend.db import now
-from backend.models import ConfigurationVersion, DiffLine, RunConfiguration
+from backend.models import (
+    ConfigurationVersion,
+    DiffLine,
+    RecipeVersion,
+    RunConfiguration,
+)
 
 DEFAULT_MODEL = "openai/gpt-6-luna"
 DEFAULT_EFFORT = "low"
@@ -85,8 +90,13 @@ def get_row(conn: Connection, version: int):
     return row
 
 
-def run_configuration(conn: Connection, version: int) -> RunConfiguration:
-    """Return a version as the claim agent works from it, with no scores."""
+def run_configuration(
+    conn: Connection, version: int, round_id: int | None = None
+) -> RunConfiguration:
+    """Return a version as the claim agent works from it, with no scores.
+
+    A run of a round's evaluation also says which round, for tracing.
+    """
     row = get_row(conn, version)
     return RunConfiguration(
         version=version,
@@ -95,6 +105,7 @@ def run_configuration(conn: Connection, version: int) -> RunConfiguration:
         ),
         model=row["model"],
         reasoning_effort=row["reasoning_effort"],
+        round_id=round_id,
     )
 
 
@@ -103,14 +114,14 @@ def current_run_configuration(conn: Connection) -> RunConfiguration:
     return run_configuration(conn, current_version(conn))
 
 
-def run_version(conn: Connection, run_id: int) -> int:
-    """Return the version a run used, or raise a 404."""
-    version = conn.execute(
-        select(t.runs.c.config_version).where(t.runs.c.id == run_id)
-    ).scalar_one_or_none()
-    if version is None:
+def run_version(conn: Connection, run_id: int) -> tuple[int, int | None]:
+    """Return the version a run used and its round, or raise a 404."""
+    row = conn.execute(
+        select(t.runs.c.config_version, t.runs.c.round_id).where(t.runs.c.id == run_id)
+    ).first()
+    if row is None:
         raise HTTPException(404, f"Run {run_id} not found")
-    return version
+    return row.config_version, row.round_id
 
 
 def list_versions(conn: Connection) -> list[ConfigurationVersion]:
@@ -158,4 +169,39 @@ def list_versions(conn: Connection) -> list[ConfigurationVersion]:
             )
         )
         before = row
+    return list(reversed(versions))
+
+
+def list_recipes(conn: Connection) -> list[RecipeVersion]:
+    """Return every version of the improver's recipe, newest first."""
+    rows = (
+        conn.execute(
+            select(t.recipes, t.handlers.c.name.label("approver"))
+            .select_from(
+                t.recipes.outerjoin(
+                    t.handlers, t.handlers.c.handler_id == t.recipes.c.approved_by
+                )
+            )
+            .order_by(t.recipes.c.version)
+        )
+        .mappings()
+        .all()
+    )
+    versions: list[RecipeVersion] = []
+    for position, row in enumerate(rows):
+        versions.append(
+            RecipeVersion(
+                version=row["version"],
+                recipe=row["recipe"],
+                reason=row["reason"],
+                proposed_by=row["proposed_by"],
+                approved_by=row["approver"],
+                approved_at=row["approved_at"],
+                created_at=row["created_at"],
+                current=position == len(rows) - 1,
+                diff=diff(rows[position - 1]["recipe"], row["recipe"])
+                if position
+                else [],
+            )
+        )
     return list(reversed(versions))

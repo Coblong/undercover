@@ -1,6 +1,6 @@
 """Request and response models for the API."""
 
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, StringConstraints
 
@@ -210,6 +210,7 @@ class StartedClaim(BaseModel):
 
 class StoppedRuns(BaseModel):
     stopped: int
+    stopped_rounds: int
 
 
 class HeldPayout(BaseModel):
@@ -262,7 +263,7 @@ class StartEvaluationRequest(BaseModel):
 
 
 class CreateEvaluationRequest(StartEvaluationRequest):
-    pass
+    round_id: int | None
 
 
 class Measures(BaseModel):
@@ -337,11 +338,24 @@ class ConfigurationVersion(BaseModel):
     diff: list[DiffLine]
 
 
+class RecipeVersion(BaseModel):
+    version: int
+    recipe: str
+    reason: str
+    proposed_by: str
+    approved_by: str | None
+    approved_at: str | None
+    created_at: str
+    current: bool
+    diff: list[DiffLine]
+
+
 class RunConfiguration(BaseModel):
     version: int
     instructions: str
     model: str
     reasoning_effort: str
+    round_id: int | None
 
 
 class Thresholds(BaseModel):
@@ -382,3 +396,136 @@ class SettingsView(BaseModel):
     values: SettingsValues
     changes: list[SettingChange]
     models: list[AllowedModel]
+
+
+RoundState = Literal["open", "finished", "stopped"]
+RoundStage = Literal[
+    "first_evaluations",
+    "improver_working",
+    "change_waiting",
+    "evaluating",
+    "verdict",
+    "recipe_waiting",
+    "finished",
+    "stopped",
+]
+Verdict = Literal["kept", "rolled_back"]
+
+
+class Scores(BaseModel):
+    runs: int
+    accuracy: float
+    grade: float | None
+    cost_per_claim: float
+    seconds_per_claim: float
+
+
+class Needs(BaseModel):
+    evaluation: int
+    held_out: int
+
+
+class Proposal(BaseModel):
+    kind: Literal["change", "recipe"]
+    version: int
+    reason: str
+    model: str | None
+    reasoning_effort: str | None
+    previous_model: str | None
+    previous_reasoning_effort: str | None
+    diff: list[DiffLine]
+
+
+class RoundDecision(BaseModel):
+    kind: Literal["change", "recipe"]
+    outcome: Literal["approved", "rejected"]
+    handler: str
+    reason: str | None
+    version: int | None
+    decided_at: str
+
+
+class Round(BaseModel):
+    id: int
+    state: RoundState
+    stage: RoundStage
+    done: int
+    of: int
+    settings: SettingsValues
+    recipe_version: int
+    started_by: str
+    started_at: str
+    ended_at: str | None
+    stopped_by: str | None
+    tried_version: int | None
+    reason: str | None
+    held_out_before: Scores | None
+    held_out_after: Scores | None
+    verdict: Verdict | None
+    why: str | None
+    pending: Proposal | None
+    decisions: list[RoundDecision]
+    cost: float
+    improver_cost: float
+    spending_left: float
+    needs: Needs
+    thread_id: str
+
+
+class CreateRoundRequest(BaseModel):
+    handler_id: str
+
+
+class StageRequest(BaseModel):
+    stage: Literal["first_evaluations", "improver_working", "evaluating", "verdict"]
+    done: int = Field(ge=0)
+    of: int = Field(ge=0)
+
+
+class ProposalRequest(BaseModel):
+    kind: Literal["change", "recipe"]
+    instructions: str | None = Field(max_length=60000)
+    model: str | None = Field(max_length=300)
+    reasoning_effort: str | None = Field(max_length=40)
+    recipe: str | None = Field(max_length=20000)
+    reason: Reason
+
+
+class ProposalDecisionRequest(BaseModel):
+    outcome: Literal["approved", "rejected"]
+    handler_id: str
+    reason: str | None = Field(max_length=2000)
+
+
+class RejectRequest(BaseModel):
+    reason: Reason
+
+
+class RoundCallRequest(BaseModel):
+    input_tokens: int = Field(ge=0)
+    output_tokens: int = Field(ge=0)
+    cost: float = Field(ge=0, allow_inf_nan=False)
+
+
+class EndRoundRequest(BaseModel):
+    state: Literal["finished", "stopped"]
+    why: str | None = Field(max_length=2000)
+
+
+class CheckRequest(BaseModel):
+    eval_set: EvalSet
+
+
+class Check(BaseModel):
+    allowed: bool
+    estimate: float
+    left: float
+    message: str
+
+
+class VerdictRequest(BaseModel):
+    reason: str | None = Field(max_length=2000)
+
+
+class ImproverView(BaseModel):
+    report: dict[str, Any]

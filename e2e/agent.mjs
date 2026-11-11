@@ -62,6 +62,7 @@ createServer(async (request, response) => {
         concurrency,
         eval_set: evalSet,
         tiny,
+        round_id: null,
       },
       response,
     );
