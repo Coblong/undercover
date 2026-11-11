@@ -13,12 +13,18 @@ export default defineConfig({
   use: { baseURL: "http://localhost:5174" },
   webServer: [
     {
+      command: "node e2e/auth.mjs",
+      url: "http://127.0.0.1:8004/health",
+      reuseExistingServer: false,
+    },
+    {
       command: "uv run -m uvicorn backend.main:app --port 8001",
       env: {
         UNDERCOVER_DB: databasePath(),
         DATABASE_URL: "",
         UNDERCOVER_AGENT: "http://127.0.0.1:8003",
         BACKEND_URL: "http://127.0.0.1:8001",
+        VITE_SUPABASE_URL: "http://127.0.0.1:8004",
       },
       url: "http://127.0.0.1:8001/api/health",
       reuseExistingServer: false,
@@ -31,7 +37,11 @@ export default defineConfig({
     },
     {
       command: "npx vite dashboard --port 5174 --strictPort",
-      env: { BACKEND_URL: "http://127.0.0.1:8001" },
+      env: {
+        BACKEND_URL: "http://127.0.0.1:8001",
+        VITE_SUPABASE_URL: "http://127.0.0.1:8004",
+        VITE_SUPABASE_PUBLISHABLE_KEY: "e2e-publishable-key",
+      },
       url: "http://localhost:5174",
       reuseExistingServer: false,
     },

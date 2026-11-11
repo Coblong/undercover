@@ -2,12 +2,13 @@ import { act, cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { ClaimView } from "./ClaimView";
+import { MeContext } from "./Me";
 import {
   claim,
   claimRoutes,
   decidedClaim,
   evaluationCopy,
-  handlers,
+  dana,
   stubApi,
   waitingForSignOff,
 } from "./fixtures";
@@ -155,10 +156,13 @@ it("offers no run button once the claim is decided", async () => {
 it("asks for a sign-off on a large payout", async () => {
   stubApi({
     "/api/claims/CLM-1001": waitingForSignOff,
-    "/api/handlers": handlers,
     ...claimRoutes,
   });
-  render(<ClaimView claimId="CLM-1001" onChange={vi.fn()} />);
+  render(
+    <MeContext value={dana}>
+      <ClaimView claimId="CLM-1001" onChange={vi.fn()} />
+    </MeContext>,
+  );
   expect(await screen.findByRole("form", { name: "Sign-off" })).toBeDefined();
   expect(screen.getByText("Approved")).toBeDefined();
   expect(screen.queryByRole("button", { name: "Run agent" })).toBeNull();

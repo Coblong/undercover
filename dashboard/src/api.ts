@@ -1,11 +1,23 @@
 import { useEffect, useState } from "react";
+import { accessToken, signOut } from "./supabase";
 
 export const POLL_MS = 2000;
 
 export const always = () => POLL_MS;
 
+async function signedIn(): Promise<Record<string, string>> {
+  const token = await accessToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+/** A refusal for want of a valid sign-in sends the handler back to sign in. */
+function check(response: Response): void {
+  if (response.status === 401) void signOut();
+}
+
 export async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path);
+  const response = await fetch(path, { headers: await signedIn() });
+  check(response);
   if (!response.ok) {
     throw new Error(`${path} returned ${String(response.status)}`);
   }
@@ -37,9 +49,10 @@ async function reasonFor(response: Response): Promise<string> {
 export async function postJson(path: string, body?: unknown): Promise<void> {
   const response = await fetch(path, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", ...(await signedIn()) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  check(response);
   if (!response.ok) throw new ApiError(await reasonFor(response));
 }
 

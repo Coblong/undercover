@@ -118,6 +118,7 @@ class Handler(BaseModel):
     handler_id: str
     name: str
     role: str
+    can_approve_over_limit: bool
 
 
 class Text(BaseModel):
@@ -156,10 +157,6 @@ class DecisionRequest(BaseModel):
 
 class PaymentRequest(BaseModel):
     amount: float = Field(allow_inf_nan=False)
-
-
-class SignOffRequest(BaseModel):
-    handler_id: str
 
 
 class StepRequest(BaseModel):

@@ -1,7 +1,6 @@
-import os
-import sqlite3
-
 from fastapi.testclient import TestClient
+
+from backend.tests import signing
 
 
 def decide(client: TestClient, claim_id: str, decision: str, payout: float):
@@ -20,9 +19,10 @@ def pay(client: TestClient, claim_id: str, amount: float):
     return client.post(f"/api/claims/{claim_id}/payment", json={"amount": amount})
 
 
-def sign_off(client: TestClient, claim_id: str, handler_id: str = "HND-01"):
+def sign_off(client: TestClient, claim_id: str, email: str = signing.DANA):
     return client.post(
-        f"/api/claims/{claim_id}/sign-off", json={"handler_id": handler_id}
+        f"/api/claims/{claim_id}/sign-off",
+        headers={"Authorization": f"Bearer {signing.token(email)}"},
     )
 
 
@@ -168,9 +168,9 @@ def test_sign_off_needs_a_claim_waiting_for_it(client: TestClient):
     assert sign_off(client, "CLM-1001").status_code == 409
 
 
-def test_sign_off_by_an_unknown_handler_is_404(client: TestClient):
+def test_sign_off_by_someone_who_is_not_a_handler_is_403(client: TestClient):
     decide(client, "CLM-1003", "approve", 1250)
-    assert sign_off(client, "CLM-1003", "HND-99").status_code == 404
+    assert sign_off(client, "CLM-1003", "nobody@example.com").status_code == 403
     assert state(client, "CLM-1003") == "waiting_for_sign_off"
 
 
@@ -193,13 +193,14 @@ def test_states_across_the_queue(client: TestClient):
 
 
 def test_handler_without_authority_cannot_sign_off(client: TestClient):
-    with sqlite3.connect(os.environ["UNDERCOVER_DB"]) as conn:
-        conn.execute(
-            "UPDATE handlers SET can_approve_over_limit = 0 WHERE handler_id = 'HND-03'"
-        )
     decide(client, "CLM-1003", "approve", 1250)
-    assert sign_off(client, "CLM-1003", "HND-03").status_code == 403
+    refused = sign_off(client, "CLM-1003", signing.MARCUS)
+    assert refused.status_code == 403
+    assert "Marcus Oyelaran" in refused.json()["detail"]
     assert state(client, "CLM-1003") == "waiting_for_sign_off"
+    assert client.get("/api/claims/CLM-1003").json()["sign_off"] is None
+    assert sign_off(client, "CLM-1003", signing.PRIYA).status_code == 403
+    assert sign_off(client, "CLM-1003").status_code == 200
 
 
 def test_needs_sign_off_only_for_an_unsigned_approval_over_the_limit(

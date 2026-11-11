@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from agent import main
 from backend import agent_service, db
 from backend.main import app
+from backend.tests import signing
 
 
 @pytest.fixture(autouse=True)
@@ -25,9 +26,11 @@ def isolated_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 @pytest.fixture
 def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClient]:
-    """A client for the backend on a fresh, seeded database."""
+    """A client for the backend on a fresh, seeded database, signed in as Dana."""
     monkeypatch.setenv("UNDERCOVER_DB", str(tmp_path / "test.db"))
+    signing.install(monkeypatch)
     with TestClient(app) as client:
+        signing.sign_in_as(client, signing.DANA)
         yield client
 
 

@@ -21,6 +21,7 @@
     "types:check": "uv run -m backend.openapi dashboard/openapi.json && node scripts/types.mjs --check"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.119.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

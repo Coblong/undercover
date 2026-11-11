@@ -1,4 +1,5 @@
-import { type APIRequestContext, expect, test } from "@playwright/test";
+import { type APIRequestContext } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 interface Call {
   claim_id: string;
@@ -60,7 +61,9 @@ test("a large payout is blocked until a handler signs off", async ({
   expect(blocked.status()).toBe(409);
   await expect(claim.getByText(/^Paid /)).toHaveCount(0);
 
-  await claim.getByLabel("Handler").selectOption({ label: "Dana Whitfield" });
+  await expect(
+    claim.getByText("You will sign off as Dana Whitfield."),
+  ).toBeVisible();
   await claim.getByRole("button", { name: "Sign off $1,250.00" }).click();
 
   await expect(claim.getByText("Signed off by Dana Whitfield")).toBeVisible();

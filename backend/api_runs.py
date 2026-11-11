@@ -6,7 +6,7 @@ from contextlib import closing
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from sqlalchemy import Connection
 
-from backend import attempts, evaluations, queries, runs, work
+from backend import attempts, auth, evaluations, queries, runs, work
 from backend.db import connect
 from backend.deps import ClaimAgent, DispatchStarter, EvaluationStarter, with_db
 from backend.models import (
@@ -53,8 +53,12 @@ def run_agent(
 
 
 @router.post("/api/dispatches", operation_id="start_dispatch", status_code=202)
-def start_dispatch(body: StartDispatchRequest, starter: DispatchStarter) -> Dispatch:
+def start_dispatch(
+    body: StartDispatchRequest, starter: DispatchStarter, email: auth.SignedIn
+) -> Dispatch:
     """Start a dispatch with this many claim agents at once, by asking the service."""
+    with closing(connect()) as conn:
+        auth.handler_for(conn, email)
     run_id = starter(body.concurrency)  # the service calls back, so hold no connection
     with closing(connect()) as conn:
         return runs.get_dispatch(conn, run_id)
@@ -62,9 +66,11 @@ def start_dispatch(body: StartDispatchRequest, starter: DispatchStarter) -> Disp
 
 @router.post("/api/evaluations", operation_id="start_evaluation", status_code=202)
 def start_evaluation(
-    body: StartEvaluationRequest, starter: EvaluationStarter
+    body: StartEvaluationRequest, starter: EvaluationStarter, email: auth.SignedIn
 ) -> Evaluation:
     """Start an evaluation of a labelled set, by asking the service."""
+    with closing(connect()) as conn:
+        auth.handler_for(conn, email)
     run_id = starter(body.concurrency, body.eval_set, body.tiny)
     with closing(connect()) as conn:
         return evaluations.get_evaluation(conn, run_id)

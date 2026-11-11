@@ -1,4 +1,5 @@
-import { type APIRequestContext, expect, test } from "@playwright/test";
+import { type APIRequestContext } from "@playwright/test";
+import { expect, test } from "./fixtures";
 
 // The agent is never run here. The stand-in for the agent's service records
 // what the backend asks it, and the tests play a dispatch out through the API.

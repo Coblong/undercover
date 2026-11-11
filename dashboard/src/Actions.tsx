@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { postJson, reasonOf, useApi } from "./api";
+import { postJson, reasonOf } from "./api";
 import { money } from "./format";
-import type { Handler } from "./types";
+import { useMe } from "./Me";
 
 export function RunAgent({
   claimId,
@@ -38,21 +38,35 @@ export function SignOffForm({
   payout,
   onDone,
 }: Readonly<{ claimId: string; payout: number; onDone: () => void }>) {
-  const { data: handlers } = useApi<Handler[]>("/api/handlers");
-  const [handlerId, setHandlerId] = useState("");
+  const me = useMe();
   const [busy, setBusy] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
   const signOff = () => {
     setBusy(true);
     setFailure(null);
-    postJson(`/api/claims/${claimId}/sign-off`, { handler_id: handlerId })
+    postJson(`/api/claims/${claimId}/sign-off`)
       .then(onDone)
       .catch((error: unknown) => {
         setFailure(reasonOf(error));
         setBusy(false);
       });
   };
+
+  if (me && !me.can_approve_over_limit) {
+    return (
+      <div className="actions" role="note" aria-label="Sign-off">
+        <p>
+          The payout is over the limit. The agent pays it once a handler signs
+          off.
+        </p>
+        <p>
+          {me.name} cannot sign off payouts over the limit. Ask a handler who
+          can, such as a senior claims handler.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form
@@ -67,27 +81,8 @@ export function SignOffForm({
         The payout is over the limit. The agent pays it once a handler signs
         off.
       </p>
-      <label>
-        Handler
-        <select
-          value={handlerId}
-          onChange={(event) => {
-            setHandlerId(event.target.value);
-          }}
-        >
-          <option value="">Choose a handler</option>
-          {handlers?.map((handler) => (
-            <option key={handler.handler_id} value={handler.handler_id}>
-              {handler.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <button
-        type="submit"
-        className="primary"
-        disabled={busy || handlerId === ""}
-      >
+      {me && <p className="muted">You will sign off as {me.name}.</p>}
+      <button type="submit" className="primary" disabled={busy || !me}>
         Sign off {money(payout)}
       </button>
       {failure && <p role="alert">Could not sign off this claim: {failure}</p>}

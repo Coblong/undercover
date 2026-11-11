@@ -225,6 +225,7 @@ def seed(conn: Connection) -> None:
                 "handler_id": h["handler_id"],
                 "name": h["name"],
                 "role": h["role"],
+                "email": h["email"].lower(),
                 "can_approve_over_limit": bool(h["can_approve_over_limit"]),
             }
             for h in load("handlers.json")

@@ -187,9 +187,12 @@ def get_claim_history(conn: Connection, claim_id: str) -> ClaimHistory:
 def list_handlers(conn: Connection) -> list[Handler]:
     """Return the claims handlers."""
     rows = conn.execute(
-        select(t.handlers.c.handler_id, t.handlers.c.name, t.handlers.c.role).order_by(
-            t.handlers.c.handler_id
-        )
+        select(
+            t.handlers.c.handler_id,
+            t.handlers.c.name,
+            t.handlers.c.role,
+            t.handlers.c.can_approve_over_limit,
+        ).order_by(t.handlers.c.handler_id)
     ).mappings()
     return [Handler.model_validate(dict(row)) for row in rows]
 

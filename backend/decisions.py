@@ -10,9 +10,9 @@ from backend import tables as t
 from backend.db import now, payout_limit, transaction
 from backend.models import (
     DecisionRequest,
+    Handler,
     Outcome,
     PaymentRequest,
-    SignOffRequest,
     State,
 )
 
@@ -154,7 +154,7 @@ def pay(conn: Connection, claim_id: str, body: PaymentRequest) -> Outcome:
     )
 
 
-def sign_off(conn: Connection, claim_id: str, body: SignOffRequest) -> Outcome:
+def sign_off(conn: Connection, claim_id: str, handler: Handler) -> Outcome:
     """Record a handler's sign-off on a large payout and hand the claim to the agent.
 
     The claim is in progress until the agent has paid it.
@@ -171,20 +171,13 @@ def sign_off(conn: Connection, claim_id: str, body: SignOffRequest) -> Outcome:
             raise HTTPException(
                 409, f"Claim {claim_id} is {state}, not waiting for sign-off"
             )
-        handler = conn.execute(
-            select(t.handlers.c.name, t.handlers.c.can_approve_over_limit).where(
-                t.handlers.c.handler_id == body.handler_id
-            )
-        ).first()
-        if handler is None:
-            raise queries.not_found("handler", body.handler_id)
         if not handler.can_approve_over_limit:
             raise HTTPException(
                 403, f"{handler.name} cannot sign off payouts over the limit"
             )
         conn.execute(
             insert(t.sign_offs).values(
-                claim_id=claim_id, handler_id=body.handler_id, signed_off_at=now()
+                claim_id=claim_id, handler_id=handler.handler_id, signed_off_at=now()
             )
         )
         conn.execute(

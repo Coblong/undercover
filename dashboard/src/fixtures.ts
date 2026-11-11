@@ -6,6 +6,7 @@ import type {
   Dispatch,
   Evaluation,
   EvaluationDetail,
+  Handler,
   Policy,
 } from "./types";
 
@@ -153,14 +154,19 @@ export function stubApi(routes: Record<string, unknown>) {
   return fetchStub;
 }
 
-export const handlers = [
-  {
-    handler_id: "HND-01",
-    name: "Dana Whitfield",
-    role: "Senior Claims Handler",
-  },
-  { handler_id: "HND-02", name: "Marcus Oyelaran", role: "Claims Handler" },
-];
+export const dana: Handler = {
+  handler_id: "HND-01",
+  name: "Dana Whitfield",
+  role: "Senior Claims Handler",
+  can_approve_over_limit: true,
+};
+
+export const marcus: Handler = {
+  handler_id: "HND-02",
+  name: "Marcus Oyelaran",
+  role: "Claims Handler",
+  can_approve_over_limit: false,
+};
 
 export const waitingForSignOff: ClaimDetail = {
   ...claim,

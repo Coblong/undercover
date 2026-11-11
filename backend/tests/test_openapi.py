@@ -10,6 +10,7 @@ OPERATIONS = {
     "get_document_section",
     "get_instructions",
     "list_handlers",
+    "get_me",
     "list_steps",
     "add_step",
     "decide_claim",

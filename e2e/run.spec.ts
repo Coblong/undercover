@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, MARCUS, signInAs, test, tokenFor } from "./fixtures";
 import { execute } from "./database";
 
 // The agent is never run here. A run and its work are set up directly and
@@ -64,11 +64,10 @@ test("the claim agent's instructions are shown and cannot be changed", async ({
   await expect(page.getByRole("textbox")).toHaveCount(0);
 });
 
-test("a refused sign-off says why", async ({ page, request }) => {
-  execute(
-    "UPDATE handlers SET can_approve_over_limit = 0 WHERE handler_id = ?",
-    "HND-03",
-  );
+test("a handler who can't sign off is told so, and the backend refuses it too", async ({
+  page,
+  request,
+}) => {
   await request.post("/api/claims/CLM-1015/decision", {
     data: {
       decision: "approve",
@@ -77,14 +76,19 @@ test("a refused sign-off says why", async ({ page, request }) => {
       policy_section: "3. Trip Delay",
     },
   });
-  await page.goto("/");
+  await signInAs(page, MARCUS);
   await page.getByRole("button", { name: /CLM-1015/ }).click();
   const claim = page.getByRole("article", { name: "Claim CLM-1015" });
-  await claim.getByLabel("Handler").selectOption({ label: "Priya Raman" });
-  await claim.getByRole("button", { name: /Sign off/ }).click();
-  await expect(claim.getByRole("alert")).toHaveText(
-    "Could not sign off this claim: Priya Raman cannot sign off payouts over the limit",
-  );
+  await expect(
+    claim.getByText(/Marcus Oyelaran cannot sign off payouts over the limit/),
+  ).toBeVisible();
+  await expect(claim.getByRole("button", { name: /Sign off/ })).toHaveCount(0);
+
+  const token = await tokenFor(request, MARCUS);
+  const refused = await request.post("/api/claims/CLM-1015/sign-off", {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(refused.status()).toBe(403);
   await expect(claim.getByText("Waiting for sign-off").first()).toBeVisible();
   const calls = (await (
     await request.get("http://127.0.0.1:8003/received")

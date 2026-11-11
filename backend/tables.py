@@ -72,6 +72,7 @@ handlers = Table(
     Column("handler_id", Text, primary_key=True),
     Column("name", Text, nullable=False),
     Column("role", Text, nullable=False),
+    Column("email", Text, nullable=False, unique=True),
     Column("can_approve_over_limit", Boolean, nullable=False),
 )
 decisions = Table(

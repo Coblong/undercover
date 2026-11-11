@@ -5,6 +5,7 @@ from sqlalchemy import Connection
 
 from backend import (
     attempts,
+    auth,
     decisions,
     documents,
     instructions,
@@ -27,7 +28,6 @@ from backend.models import (
     Policy,
     Section,
     SectionRef,
-    SignOffRequest,
     Step,
     StepRequest,
     Text,
@@ -92,6 +92,13 @@ def get_instructions() -> Text:
     return Text(text=instructions.render())
 
 
+@router.get("/api/me", operation_id="get_me")
+@with_db
+def get_me(email: auth.SignedIn, conn: Connection) -> Handler:
+    """Get the signed-in handler."""
+    return auth.handler_for(conn, email)
+
+
 @router.get("/api/handlers", operation_id="list_handlers")
 @with_db
 def list_handlers(conn: Connection) -> list[Handler]:
@@ -131,13 +138,14 @@ def pay_claim(claim_id: str, body: PaymentRequest, conn: Connection) -> Outcome:
 @with_db
 def sign_off_claim(
     claim_id: str,
-    body: SignOffRequest,
+    email: auth.SignedIn,
     conn: Connection,
     background: BackgroundTasks,
     agent: ClaimAgent,
 ) -> Outcome:
-    """Sign off a payout over the limit as a handler, and hand it to the agent."""
-    outcome = decisions.sign_off(conn, claim_id, body)
+    """Sign off a payout over the limit as the signed-in handler, and hand it on."""
+    handler = auth.handler_for(conn, email)
+    outcome = decisions.sign_off(conn, claim_id, handler)
     background.add_task(work.execute_attempt, claim_id, None, agent, True)
     return outcome
 

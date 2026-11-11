@@ -201,7 +201,7 @@ def test_a_copy_held_for_a_sign_off_counts_as_finished_and_cannot_be_signed_off(
     assert held["state"] == "decided"
     assert held["payment"] is None
     assert held["needs_sign_off"] is True
-    refused = client.post(f"/api/claims/{copy}/sign-off", json={"handler_id": "HND-01"})
+    refused = client.post(f"/api/claims/{copy}/sign-off")
     assert refused.status_code == 409
     assert "copy made for an evaluation" in refused.json()["detail"]
     assert client.post(f"/api/claims/{copy}/run").status_code == 409

@@ -5,6 +5,7 @@ import { App } from "./App";
 import {
   claim,
   claimRoutes,
+  dana,
   evaluationCopy,
   finishedEvaluation,
   finishedEvaluationRow,
@@ -12,20 +13,38 @@ import {
   summaries,
 } from "./fixtures";
 
+vi.mock("./supabase", () => ({
+  accessToken: () => Promise.resolve(null),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+  watchSignedIn: (onChange: (signedIn: boolean) => void) => {
+    onChange(true);
+    return () => undefined;
+  },
+}));
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
 
+const me = { "/api/me": dana };
+
 it("shows the queue and asks for a claim to be selected", async () => {
-  stubApi({ "/api/claims": summaries, "/api/dispatches/latest": null });
+  stubApi({ ...me, "/api/claims": summaries, "/api/dispatches/latest": null });
   render(<App />);
   expect(await screen.findByRole("button", { name: /CLM-1001/ })).toBeDefined();
+  expect(screen.getByText("Signed in as")).toBeDefined();
+  expect(screen.getByText("Dana Whitfield")).toBeDefined();
+  expect(
+    screen.getByRole("heading", { name: "Claims", level: 2 }),
+  ).toBeDefined();
   expect(screen.getByText("Select a claim to see it in full.")).toBeDefined();
 });
 
 it("opens a claim from the queue", async () => {
   stubApi({
+    ...me,
     "/api/claims": summaries,
     "/api/dispatches/latest": null,
     "/api/claims/CLM-1001": claim,
@@ -40,23 +59,38 @@ it("opens a claim from the queue", async () => {
   ).toBeDefined();
 });
 
-it("shows a loading message, then an error when the queue cannot be loaded", async () => {
-  stubApi({ "/api/dispatches/latest": null });
-  render(<App />);
-  expect(screen.getByRole("status").textContent).toBe("Loading claims...");
-  expect((await screen.findByRole("alert")).textContent).toBe(
-    "Could not load the claims.",
+it("shows a loading message while the queue loads", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((path: string) =>
+      path === "/api/me"
+        ? Promise.resolve(new Response(JSON.stringify(dana)))
+        : new Promise<Response>(() => undefined),
+    ),
   );
+  render(<App />);
+  expect(await screen.findByText("Loading claims...")).toBeDefined();
+});
+
+it("says so when the queue cannot be loaded", async () => {
+  stubApi({ ...me, "/api/dispatches/latest": null });
+  render(<App />);
+  expect(
+    (await screen.findByText("Could not load the claims.")).textContent,
+  ).toBe("Could not load the claims.");
 });
 
 it("switches to the instructions and back", async () => {
   stubApi({
+    ...me,
     "/api/claims": summaries,
     "/api/dispatches/latest": null,
     "/api/instructions/claim": { text: "Decide from the wording." },
   });
   render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: "Instructions" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Instructions" }),
+  );
   expect(await screen.findByText("Decide from the wording.")).toBeDefined();
   expect(screen.queryByRole("button", { name: /CLM-1001/ })).toBeNull();
   await userEvent.click(screen.getByRole("button", { name: "Claims" }));
@@ -67,6 +101,7 @@ it("keeps the queue up to date", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   let queue = summaries;
   stubApi({
+    ...me,
     "/api/claims": () => queue,
     "/api/dispatches/latest": null,
   });
@@ -84,6 +119,7 @@ it("keeps the queue up to date", async () => {
 
 it("opens an evaluation's claim from the scoreboard in the claims view", async () => {
   stubApi({
+    ...me,
     "/api/claims": summaries,
     "/api/dispatches/latest": null,
     "/api/evaluations": [finishedEvaluationRow],
@@ -91,7 +127,9 @@ it("opens an evaluation's claim from the scoreboard in the claims view", async (
     "/api/claims/EV3-CLM-1114": evaluationCopy,
   });
   render(<App />);
-  await userEvent.click(screen.getByRole("button", { name: "Scoreboard" }));
+  await userEvent.click(
+    await screen.findByRole("button", { name: "Scoreboard" }),
+  );
   await userEvent.click(await screen.findByRole("button", { name: "3" }));
   await userEvent.click(
     await screen.findByRole("button", { name: "EV3-CLM-1114" }),

@@ -54,9 +54,7 @@ def hold(client: TestClient, agents: Agents, claim_id: str = "CLM-1003") -> None
 
 
 def sign_off(client: TestClient, claim_id: str = "CLM-1003"):
-    return client.post(
-        f"/api/claims/{claim_id}/sign-off", json={"handler_id": "HND-01"}
-    )
+    return client.post(f"/api/claims/{claim_id}/sign-off")
 
 
 def test_a_sign_off_calls_the_agent_once_on_the_same_thread_and_it_pays(

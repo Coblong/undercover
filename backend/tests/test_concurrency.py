@@ -9,7 +9,7 @@ from sqlalchemy import Connection, text
 
 from backend import attempts, decisions, runs
 from backend.db import connect, init_db
-from backend.models import DecisionRequest, PaymentRequest, SignOffRequest
+from backend.models import DecisionRequest, Handler, PaymentRequest
 from backend.tests.helpers import new_dispatch
 
 THREADS = 8
@@ -107,7 +107,14 @@ def test_one_sign_off_wins(database: None):
     exactly_one_winner(
         race(
             lambda c: decisions.sign_off(
-                c, "CLM-1003", SignOffRequest(handler_id="HND-01")
+                c,
+                "CLM-1003",
+                Handler(
+                    handler_id="HND-01",
+                    name="Dana Whitfield",
+                    role="Senior Claims Handler",
+                    can_approve_over_limit=True,
+                ),
             )
         )
     )

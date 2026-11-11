@@ -2,7 +2,8 @@ import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, it, vi } from "vitest";
 import { RunAgent, SignOffForm } from "./Actions";
-import { handlers, Refusal, stubApi } from "./fixtures";
+import { dana, marcus, Refusal, stubApi } from "./fixtures";
+import { MeContext } from "./Me";
 
 afterEach(() => {
   cleanup();
@@ -72,45 +73,55 @@ it("keeps to a plain message when the network fails", async () => {
   );
 });
 
-it("signs off as the chosen handler", async () => {
-  const fetchStub = stubApi({
-    "/api/handlers": handlers,
-    "POST /api/claims/CLM-1001/sign-off": {},
-  });
+it("signs off as the signed-in handler", async () => {
+  const fetchStub = stubApi({ "POST /api/claims/CLM-1001/sign-off": {} });
   const onDone = vi.fn();
-  render(<SignOffForm claimId="CLM-1001" payout={1250} onDone={onDone} />);
-  const button = screen.getByRole("button", {
-    name: "Sign off $1,250.00",
-  });
-  expect((button as HTMLButtonElement).disabled).toBe(true);
-  await userEvent.selectOptions(
-    await screen.findByLabelText("Handler"),
-    "Dana Whitfield",
+  render(
+    <MeContext value={dana}>
+      <SignOffForm claimId="CLM-1001" payout={1250} onDone={onDone} />
+    </MeContext>,
   );
-  await userEvent.click(button);
+  expect(
+    screen.getByText("You will sign off as Dana Whitfield."),
+  ).toBeDefined();
+  await userEvent.click(
+    screen.getByRole("button", { name: "Sign off $1,250.00" }),
+  );
   await vi.waitFor(() => {
     expect(onDone).toHaveBeenCalled();
   });
   expect(fetchStub).toHaveBeenCalledWith(
     "/api/claims/CLM-1001/sign-off",
-    expect.objectContaining({ body: JSON.stringify({ handler_id: "HND-01" }) }),
+    expect.objectContaining({ method: "POST", body: undefined }),
   );
+});
+
+it("says what a handler can't do and why, and offers no sign-off", () => {
+  stubApi({});
+  render(
+    <MeContext value={marcus}>
+      <SignOffForm claimId="CLM-1001" payout={1250} onDone={vi.fn()} />
+    </MeContext>,
+  );
+  expect(
+    screen.getByText(/Marcus Oyelaran cannot sign off payouts over the limit/),
+  ).toBeDefined();
+  expect(screen.queryByRole("button", { name: /Sign off/ })).toBeNull();
 });
 
 it("gives the backend's reason when the sign-off is refused", async () => {
   stubApi({
-    "/api/handlers": handlers,
-    "POST /api/claims/CLM-1001/sign-off": new Refusal(403, {
-      detail: "Marcus Oyelaran cannot sign off payouts over the limit",
+    "POST /api/claims/CLM-1001/sign-off": new Refusal(409, {
+      detail: "Claim CLM-1001 is decided, not waiting for sign-off",
     }),
   });
-  render(<SignOffForm claimId="CLM-1001" payout={1250} onDone={vi.fn()} />);
-  await userEvent.selectOptions(
-    await screen.findByLabelText("Handler"),
-    "Marcus Oyelaran",
+  render(
+    <MeContext value={dana}>
+      <SignOffForm claimId="CLM-1001" payout={1250} onDone={vi.fn()} />
+    </MeContext>,
   );
   await userEvent.click(screen.getByRole("button", { name: /Sign off/ }));
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "Could not sign off this claim: Marcus Oyelaran cannot sign off payouts over the limit",
+    "Could not sign off this claim: Claim CLM-1001 is decided, not waiting for sign-off",
   );
 });

@@ -80,6 +80,7 @@ def test_list_handlers(client: TestClient):
         "Priya Raman",
     ]
     assert "email" not in handlers[0]
+    assert [h["can_approve_over_limit"] for h in handlers] == [True, False, False]
 
 
 def test_steps_start_empty(client: TestClient):

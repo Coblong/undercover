@@ -85,11 +85,69 @@ p {
   color: var(--muted);
 }
 
+.page {
+  padding: 0 1.5rem 2rem;
+}
+
+.page-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem 0 1rem;
+}
+
+.page-header p {
+  margin: 0.15rem 0 0;
+}
+
+.page-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.who {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  font-size: 0.9rem;
+}
+
+.sign-in {
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.sign-in .panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: min(24rem, 100%);
+}
+
+.sign-in label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-weight: 500;
+}
+
+input[type="email"],
+input[type="password"] {
+  padding: 0.5rem 0.65rem;
+  border: 0;
+  border-radius: 10px;
+  background: var(--hover);
+  color: inherit;
+  font: inherit;
+}
+
 .layout {
   display: grid;
   grid-template-columns: minmax(300px, 380px) minmax(0, 1fr);
   gap: 1rem;
-  padding: 1rem 1.5rem 2rem;
   align-items: start;
 }
 

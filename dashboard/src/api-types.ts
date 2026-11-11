@@ -255,6 +255,7 @@ export interface HTTPValidationError {
 }
 
 export interface Handler {
+  can_approve_over_limit: boolean;
   handler_id: string;
   name: string;
   role: string;
@@ -374,10 +375,6 @@ export interface SignOff {
   handler_id: string;
   handler_name: string;
   signed_off_at: string;
-}
-
-export interface SignOffRequest {
-  handler_id: string;
 }
 
 export interface StartDispatchRequest {

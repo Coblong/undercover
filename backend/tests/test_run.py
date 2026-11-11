@@ -125,9 +125,7 @@ def test_large_approval_settles_to_waiting_for_sign_off_at_the_end(
             "message"
         ]
         during["state"] = state(client, "CLM-1003")
-        during["sign_off"] = client.post(
-            "/api/claims/CLM-1003/sign-off", json={"handler_id": "HND-01"}
-        ).status_code
+        during["sign_off"] = client.post("/api/claims/CLM-1003/sign-off").status_code
         during["paid"] = client.post(
             "/api/claims/CLM-1003/payment", json={"amount": 1250}
         ).status_code
