@@ -21,6 +21,14 @@ it("shows the current version and every version", async () => {
   expect(within(versions).getAllByRole("row")).toHaveLength(3);
   expect(within(versions).getByText("Current")).toBeDefined();
   expect(within(versions).getByText("Earlier")).toBeDefined();
+  // Version 1 has two held-out runs, with an accuracy of 64% and a grade of 1.40.
+  const [, , first] = within(versions).getAllByRole("row");
+  expect(first.textContent).toContain("64%");
+  expect(first.textContent).toContain("1.40");
+  expect(first.textContent.endsWith("2")).toBe(true);
+  // Version 2 has no scores yet.
+  const [, second] = within(versions).getAllByRole("row");
+  expect(second.textContent.endsWith("-0")).toBe(true);
 });
 
 it("shows what the chosen version changed, with additions and removals marked", async () => {

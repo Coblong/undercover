@@ -336,6 +336,8 @@ class ConfigurationVersion(BaseModel):
     previous_model: str | None
     previous_reasoning_effort: str | None
     diff: list[DiffLine]
+    held_out: "Scores | None" = None
+    evaluation: "Scores | None" = None
 
 
 class RecipeVersion(BaseModel):

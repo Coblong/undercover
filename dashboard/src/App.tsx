@@ -3,6 +3,7 @@ import { always, useApi } from "./api";
 import { ClaimView } from "./ClaimView";
 import { Configuration } from "./Configuration";
 import { DispatchPanel } from "./DispatchPanel";
+import { Improvement } from "./Improvement";
 import { MeContext } from "./Me";
 import { PageHeader } from "./PageHeader";
 import { Queue } from "./Queue";
@@ -12,11 +13,13 @@ import { SignIn } from "./SignIn";
 import { signOut, watchSignedIn } from "./supabase";
 import type { ClaimSummary, Handler } from "./types";
 
-type View = "claims" | "scoreboard" | "configuration" | "settings";
+type View =
+  "claims" | "scoreboard" | "improvement" | "configuration" | "settings";
 
 const VIEWS: Record<View, string> = {
   claims: "Claims",
   scoreboard: "Scoreboard",
+  improvement: "Improvement",
   configuration: "Configuration",
   settings: "Settings",
 };
@@ -64,6 +67,7 @@ function Dashboard({ me }: Readonly<{ me: Handler }>) {
           </button>
         </div>
       </header>
+      {view === "improvement" && <Improvement />}
       {view === "configuration" && <Configuration />}
       {view === "settings" && <Settings />}
       {view === "scoreboard" && (

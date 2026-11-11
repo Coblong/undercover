@@ -2,7 +2,7 @@
 
 // Run `npm run types` after changing backend/models.py.
 
-import type { SignOff, Trip, ValidationError } from "./api-types-2";
+import type { Scores, SignOff, Trip, ValidationError } from "./api-types-2";
 
 export interface AllowedModel {
   input_price: number;
@@ -81,6 +81,8 @@ export interface ConfigurationVersion {
   created_at: string;
   current: boolean;
   diff: DiffLine[];
+  evaluation?: Scores | null;
+  held_out?: Scores | null;
   instructions: string;
   model: string;
   previous_model: string | null;

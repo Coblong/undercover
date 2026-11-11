@@ -125,3 +125,13 @@ export const SET_LABEL = {
   evaluation: "Evaluation set",
   held_out: "Held-out set",
 } as const;
+
+/** A grade from 0 to 3, or a dash when there is none. */
+export function gradeOf(grade: number | null | undefined): string {
+  return grade === null || grade === undefined ? "-" : grade.toFixed(2);
+}
+
+/** A time such as "Nov 3, 2026, 10:00" in UTC. */
+export function dateTime(iso: string): string {
+  return `${date(iso)}, ${timeOfDay(iso).slice(0, 5)}`;
+}

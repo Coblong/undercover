@@ -9,6 +9,7 @@ import type {
   EvaluationDetail,
   Handler,
   Policy,
+  Round,
   SettingsView,
 } from "./types";
 
@@ -334,6 +335,14 @@ export const versionOne: ConfigurationVersion = {
   previous_model: null,
   previous_reasoning_effort: null,
   diff: [],
+  held_out: {
+    runs: 2,
+    accuracy: 0.64,
+    grade: 1.4,
+    cost_per_claim: 0.001,
+    seconds_per_claim: 20,
+  },
+  evaluation: null,
 };
 
 export const versionTwo: ConfigurationVersion = {
@@ -347,6 +356,7 @@ export const versionTwo: ConfigurationVersion = {
   approved_by: "Dana Whitfield",
   approved_at: "2026-11-02T10:00:00+00:00",
   current: true,
+  held_out: null,
   previous_model: "openai/gpt-6-luna",
   previous_reasoning_effort: "low",
   diff: [
@@ -396,3 +406,120 @@ export const settingsView: SettingsView = {
     },
   ],
 };
+
+export const roundSettings = settingsView.values;
+
+export const waitingRound: Round = {
+  id: 2,
+  state: "open",
+  stage: "change_waiting",
+  done: 0,
+  of: 0,
+  settings: roundSettings,
+  recipe_version: 1,
+  started_by: "Dana Whitfield",
+  started_at: "2026-11-04T10:00:00+00:00",
+  ended_at: null,
+  stopped_by: null,
+  tried_version: null,
+  reason: null,
+  held_out_before: null,
+  held_out_after: null,
+  verdict: null,
+  why: null,
+  pending: {
+    kind: "change",
+    version: 2,
+    reason: "Approvals of declined claims need a rule.",
+    model: "google/gemini-3.5-flash-lite",
+    reasoning_effort: "minimal",
+    previous_model: "openai/gpt-6-luna",
+    previous_reasoning_effort: "low",
+    diff: [
+      { kind: "context", text: "Use the wording." },
+      { kind: "remove", text: "Old line" },
+      { kind: "add", text: "Never guess." },
+    ],
+  },
+  decisions: [],
+  cost: 0.1234,
+  improver_cost: 0.02,
+  spending_left: 0.3766,
+  needs: { evaluation: 0, held_out: 0 },
+  thread_id: "round-2-abcd",
+};
+
+export const finishedRound: Round = {
+  ...waitingRound,
+  id: 1,
+  state: "finished",
+  stage: "finished",
+  tried_version: 2,
+  reason: "Approvals of declined claims need a rule.",
+  held_out_before: {
+    runs: 2,
+    accuracy: 0.64,
+    grade: 1.4,
+    cost_per_claim: 0.001,
+    seconds_per_claim: 20,
+  },
+  held_out_after: {
+    runs: 2,
+    accuracy: 0.8,
+    grade: 1.7,
+    cost_per_claim: 0.0011,
+    seconds_per_claim: 21,
+  },
+  verdict: "kept",
+  why: "accuracy improved",
+  pending: null,
+  decisions: [
+    {
+      kind: "change",
+      outcome: "approved",
+      handler: "Dana Whitfield",
+      reason: null,
+      version: 2,
+      decided_at: "2026-11-03T10:30:00+00:00",
+    },
+    {
+      kind: "recipe",
+      outcome: "rejected",
+      handler: "Dana Whitfield",
+      reason: "Too long.",
+      version: null,
+      decided_at: "2026-11-03T11:00:00+00:00",
+    },
+  ],
+  cost: 0.2,
+  improver_cost: 0.05,
+  spending_left: 0.3,
+};
+
+export const recipes = [
+  {
+    version: 2,
+    recipe: "1. Read.\n2. Propose.",
+    reason: "Shorter.",
+    proposed_by: "Improver, round 1",
+    approved_by: "Dana Whitfield",
+    approved_at: "2026-11-03T11:30:00+00:00",
+    created_at: "2026-11-03T11:30:00+00:00",
+    current: true,
+    diff: [
+      { kind: "remove", text: "1. Call read_results." },
+      { kind: "add", text: "1. Read." },
+    ],
+  },
+  {
+    version: 1,
+    recipe: "1. Call read_results.",
+    reason: "The first recipe.",
+    proposed_by: "Seed",
+    approved_by: null,
+    approved_at: null,
+    created_at: "2026-11-01T09:00:00+00:00",
+    current: false,
+    diff: [],
+  },
+];

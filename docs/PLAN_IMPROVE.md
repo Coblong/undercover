@@ -250,10 +250,10 @@ Builds the page a handler runs the improver from.
 
 Success criteria:
 
-- [ ] `npm run check:ts` passes at 80% with tests for each stage's label and count, the proposal with its diff and the model before and after, Approve and Reject confirmed with a reason, Marcus seeing the reason he can't act, the empty state before any round, the error state, the rounds table with right-aligned numbers, the chart's marks, and polling that holds still when nothing changed.
-- [ ] `npm run e2e` passes: sign in as Dana, start a round, play the service's calls through the API to a waiting proposal, see the diff, approve it in the dialog, and see the stand-in receive the approval with the handler. A second test rejects with a reason. A third, as Marcus, sees the explanation.
-- [ ] In the browser against `npm run dev`, the page renders with seeded rounds written through the API, in light and dark mode, with no horizontal scroll at 1280 px.
-- [ ] `npm run check` passes.
+- [x] `npm run check:ts` passes at 80% with tests for each stage's label and count, the proposal with its diff and the model before and after, Approve and Reject confirmed with a reason, Marcus seeing the reason he can't act, the empty state before any round, the error state, the rounds table with right-aligned numbers, the chart's marks, and polling that holds still when nothing changed.
+- [x] `npm run e2e` passes: sign in as Dana, start a round, play the service's calls through the API to a waiting proposal, see the diff, approve it in the dialog, and see the stand-in receive the approval with the handler. A second test rejects with a reason. A third, as Marcus, sees the explanation.
+- [x] In the browser against `npm run dev`, the page renders with seeded rounds written through the API, in light and dark mode, with no horizontal scroll at 1280 px.
+- [x] `npm run check` passes.
 
 ## Phase 6: The look of the whole dashboard
 

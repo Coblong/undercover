@@ -9,6 +9,7 @@ from backend import (
     configurations,
     decisions,
     documents,
+    improvement,
     payout,
     queries,
     settings_store,
@@ -180,7 +181,19 @@ def record_work_time(claim_id: str, body: WorkTimeRequest, conn: Connection) -> 
 @with_db
 def list_configurations(conn: Connection) -> list[ConfigurationVersion]:
     """List every version of the claim agent's configuration, newest first."""
-    return configurations.list_versions(conn)
+    return [
+        version.model_copy(
+            update={
+                "held_out": improvement.version_scores(
+                    conn, version.version, "held_out"
+                ),
+                "evaluation": improvement.version_scores(
+                    conn, version.version, "evaluation"
+                ),
+            }
+        )
+        for version in configurations.list_versions(conn)
+    ]
 
 
 @router.get("/api/recipes", operation_id="list_recipes")

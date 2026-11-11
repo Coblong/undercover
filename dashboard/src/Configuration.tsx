@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useApi } from "./api";
 import { Chip } from "./Chip";
 import { Diff } from "./Diff";
-import { date } from "./format";
+import { date, gradeOf, percent } from "./format";
 import { PageHeader } from "./PageHeader";
 import type { ConfigurationVersion } from "./types";
 
@@ -102,6 +102,15 @@ export function Configuration() {
                 <th scope="col">Effort</th>
                 <th scope="col">Proposed by</th>
                 <th scope="col">Approved by</th>
+                <th scope="col" className="num">
+                  Held-out accuracy
+                </th>
+                <th scope="col" className="num">
+                  Held-out grade
+                </th>
+                <th scope="col" className="num">
+                  Runs
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -132,6 +141,15 @@ export function Configuration() {
                   <td>{version.reasoning_effort}</td>
                   <td>{version.proposed_by}</td>
                   <td>{version.approved_by ?? "-"}</td>
+                  <td className="num mono">
+                    {version.held_out
+                      ? percent(version.held_out.accuracy)
+                      : "-"}
+                  </td>
+                  <td className="num mono">
+                    {version.held_out ? gradeOf(version.held_out.grade) : "-"}
+                  </td>
+                  <td className="num mono">{version.held_out?.runs ?? 0}</td>
                 </tr>
               ))}
             </tbody>
